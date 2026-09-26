@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { Button, Card, Chip, DietMark, Empty, FoodIcon, Header, Icon, Notice, Pill, RoundButton, ScoreBadge, Sheet, tap, useToast } from '@/components/ui';
+import type { Food } from '@/data/foods';
 import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
 import { fmt, giBand, healthScore, kcalStr, scale } from '@/lib/nutrition';
@@ -11,6 +12,17 @@ import { MEALS, useStore, type Meal } from '@/lib/store';
 import { useDaySummary, useMeals } from '@/lib/summary';
 import { C, F, T } from '@/theme';
 import { goBack } from '@/lib/nav';
+
+/** Where a food's numbers come from, in plain words. */
+function sourceNote(f: Food): string {
+  if (f.src === 'ai') return 'Estimated by AI (Gemini) from the name. Real values depend on the recipe, so check a label if you have one.';
+  if (f.src === 'label') return 'From the pack’s nutrition label.';
+  if (f.src === 'indb') return 'From the Indian Nutrient Databank (INDB), for a typical home recipe.';
+  if (f.src === 'usda') return 'From USDA FoodData Central (FNDDS).';
+  if (f.id.startsWith('bc-')) return 'From Open Food Facts; check against the pack.';
+  if (f.custom) return 'Values you entered for this food.';
+  return 'Approximate reference values (IFCT / USDA).';
+}
 
 export default function FoodDetail() {
   const params = useLocalSearchParams<{ id: string; day?: string; meal?: string; entry?: string }>();
@@ -109,7 +121,7 @@ export default function FoodDetail() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <DietMark diet={f.diet} />
                 <Text style={T.small}>{f.cat}</Text>
-                {f.id.startsWith('bc-') ? <Pill label="Packaged" color={C.coach} bg={C.coachSoft} /> : f.custom ? <Pill label="Your food" color={C.coach} bg={C.coachSoft} /> : null}
+                {f.id.startsWith('bc-') ? <Pill label="Packaged" color={C.coach} bg={C.coachSoft} /> : f.src === 'ai' ? <Pill label="AI estimate" color={C.coach} bg={C.coachSoft} /> : f.custom ? <Pill label="Your food" color={C.coach} bg={C.coachSoft} /> : null}
               </View>
             </View>
             <Pressable onPress={() => setScoreInfo(true)} accessibilityRole="button" accessibilityLabel="What is the health score">
@@ -209,7 +221,7 @@ export default function FoodDetail() {
             ))}
           </ScrollView>
           <Text style={[T.tiny, { marginTop: 18 }]}>
-            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {f.id.startsWith('bc-') ? 'From Open Food Facts; check against the pack.' : f.custom ? 'Values you entered for this food.' : f.src === 'indb' ? 'From the Indian Nutrient Databank (INDB), for a typical home recipe.' : f.src === 'usda' ? 'From USDA FoodData Central (FNDDS).' : 'Approximate reference values (IFCT / USDA).'}
+            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {sourceNote(f)}
           </Text>
         </ScrollView>
 

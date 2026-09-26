@@ -48,10 +48,11 @@ offline with no account, and can optionally sync to your own free Firebase proje
 | Snap a meal | Take or pick a photo, tap the foods on the plate (suggestions come from what you usually eat at that meal), adjust portions, log. The photo is saved with the meal. |
 | Weight | A simple weight log with progress towards your goal and a trend chart. |
 | Progress | 7 and 30 day calorie charts against your budget, macro averages, weight trend, top calorie sources. |
-| Reminders | Breakfast, lunch and dinner reminders at times you choose. Scheduled on the phone, no server. |
+| Reminders | Reminders for your main meals at times you choose. Scheduled on the phone, no server. |
 | Accounts | "This phone only" accounts (no internet needed), or cloud accounts with email / password or Google that sync across phones and the web. |
+| AI helpers (optional) | Photograph a packet's nutrition label to fill in a new food, or get an AI estimate for a dish the database doesn't have. Uses Gemini through Firebase AI Logic, so no AI key is stored in the app. See [step 7](#step-7-optional-ai-features). |
 
-There is no AI in this version. See [Adding automatic food recognition](#adding-automatic-food-recognition).
+Photo logging itself doesn't use AI: you tap the foods on your plate. See [Adding automatic food recognition](#adding-automatic-food-recognition).
 
 ## Quick start: run it in 5 minutes
 
@@ -238,7 +239,32 @@ example a Play Store upload key) needs its own SHA-1 added.
 **About the values in `.env`:** anything starting with `EXPO_PUBLIC_` is built into the app, and
 that's fine. Firebase web settings are designed to be public. What keeps data safe is the
 Firestore rules from step 4. `.env` is still kept out of git so each fork uses its own project.
-Never put a Firebase *service account* key in this app.
+Never put a Firebase *service account* key or a Gemini API key in this app: anyone with the APK
+could extract it.
+
+### Step 7 (optional): AI features
+
+Two AI helpers use Google Gemini through [Firebase AI Logic](https://firebase.google.com/docs/ai-logic),
+so the app never contains an AI key:
+
+- **Read a label:** on the custom food screen (and when a scanned barcode isn't found), photograph
+  the nutrition table on a packet and AI fills in the form for you to check.
+- **Estimate a dish:** when a search finds nothing, AI estimates typical nutrition for what you
+  typed. These foods are marked "AI estimate".
+
+To turn them on:
+
+1. In the Firebase console open **AI Logic** (left menu, under **AI**) and click **Get started**.
+2. Choose **Gemini Developer API**. It has a free tier and works on the free Spark plan.
+3. Follow the prompts to enable the APIs. Firebase creates and keeps the Gemini key on its side;
+   don't copy it into the app.
+
+No rebuild is needed: the AI buttons appear whenever Firebase is set up, and they start working as
+soon as AI Logic is on. Until then they show "AI isn't switched on for this app yet".
+
+Anyone who has your app's Firebase settings could call AI Logic and use up your free quota. For a
+public release, turn on [App Check](https://firebase.google.com/docs/ai-logic/app-check) and set per-user
+limits in the AI Logic settings.
 
 ## Build an installable Android app (APK)
 
@@ -468,6 +494,8 @@ platewise/
   Deleting your account in **Me** deletes the cloud data too.
 - **Meal photos** stay on the phone that took them and are never uploaded.
 - **Barcode lookups** send only the barcode number to Open Food Facts.
+- **AI helpers** (only when you tap them) send the label photo or the food name you typed to Google
+  Gemini through Firebase AI Logic. Nothing else from your logs is sent.
 - Android system backups are turned off, and there are no ads or analytics.
 
 ## Food data

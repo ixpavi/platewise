@@ -22,7 +22,7 @@ export type Food = {
   /** Created by the user on this phone. */
   custom?: boolean;
   /** Where the values come from, for the open datasets (see README, "Food data"). */
-  src?: 'indb' | 'usda';
+  src?: 'indb' | 'usda' | 'ai' | 'label';
 };
 
 type Row = [

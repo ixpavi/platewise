@@ -82,7 +82,8 @@ export function searchFoods(query: string, foods: Food[]): Food[] {
     if (name.startsWith(q)) score += 120;
     else if (hay.includes(q)) score += 70;
     if (score <= 0) continue;
-    out.push({ f: foods[i], score: score + (foods[i].src ? 0 : 12) });
+    // The curated list and the user's own foods (typed, from a label or an AI estimate) rank first.
+    out.push({ f: foods[i], score: score + (!foods[i].src || foods[i].custom ? 12 : 0) });
   }
   return out.sort((a, b) => b.score - a.score || a.f.name.length - b.f.name.length).map((x) => x.f);
 }

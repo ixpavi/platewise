@@ -170,7 +170,7 @@ export default function Barcode() {
             <View style={{ gap: 8, marginTop: 6 }}>
               {result.k === 'error' ? <Button label="Try again" icon="refresh" small onPress={() => ((lock.current = false), lookup(result.code))} /> : null}
               {result.k !== 'error' ? (
-                <Button label="Add it from the label" icon="plus" small onPress={() => router.replace({ pathname: '/custom-food', params: { name: result.k === 'nodata' ? result.name : '' } })} />
+                <Button label="Add it from the label" icon="plus" small onPress={() => router.replace({ pathname: '/custom-food', params: { name: result.k === 'nodata' ? result.name : '', code: result.code } })} />
               ) : null}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button label="Scan another" kind="ghost" small style={{ flex: 1 }} onPress={again} />

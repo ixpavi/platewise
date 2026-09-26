@@ -1,8 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { Button, Card, Field, Header, Notice, Screen, Segmented, useToast } from '@/components/ui';
+import { Button, Card, Field, Header, Icon, Notice, Screen, Segmented, useToast } from '@/components/ui';
 import { FOODS, type Category, type Diet, type Food } from '@/data/foods';
+import { aiAvailable, AiError, labelPhoto, readLabel, type LabelRead } from '@/lib/ai';
 import { useStore } from '@/lib/store';
 import { C, F, T } from '@/theme';
 import { goBack } from '@/lib/nav';
@@ -11,7 +12,9 @@ const CAT_ICON: Record<Category, string> = { Food: 'silverware-fork-knife', Drin
 const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
 export default function CustomFood() {
-  const params = useLocalSearchParams<{ name?: string }>();
+  const params = useLocalSearchParams<{ name?: string; code?: string }>();
+  // Coming from a barcode that wasn't found: save under that barcode so the next scan opens it.
+  const code = /^\d{8,14}$/.test(params.code ?? '') ? params.code! : null;
   const { state, saveCustomFood } = useStore();
   const toast = useToast();
   const [name, setName] = useState(params.name ?? '');
@@ -27,6 +30,41 @@ export default function CustomFood() {
   const [fibre, setFibre] = useState('');
   const [sugar, setSugar] = useState('');
   const [err, setErr] = useState<Record<string, string>>({});
+  const [fromLabel, setFromLabel] = useState(false);
+  const [ai, setAi] = useState<{ busy?: boolean; msg?: string; ok?: boolean }>({});
+
+  const fill = (r: LabelRead) => {
+    if (r.name && !name.trim()) setName(r.name);
+    const b: 'g' | 'ml' = r.isDrink ? 'ml' : 'g';
+    setBase(b);
+    setCat(r.isDrink ? 'Drink' : cat === 'Drink' ? 'Food' : cat);
+    if (r.diet) setDiet(r.diet);
+    const sv = r.servingGrams ?? 100;
+    setServing(fmtNum(sv));
+    setServingLabel(r.servingGrams ? r.servingLabel || '1 serving' : `100 ${b}`);
+    const perServing = (v: number) => fmtNum(Math.round(v * sv) / 100);
+    setKcal(String(Math.round((r.per100.kcal * sv) / 100)));
+    setCarb(perServing(r.per100.carb));
+    setProtein(perServing(r.per100.protein));
+    setFat(perServing(r.per100.fat));
+    setFibre(r.per100.fibre ? perServing(r.per100.fibre) : '');
+    setSugar(r.per100.sugar ? perServing(r.per100.sugar) : '');
+    setFromLabel(true);
+    setErr({});
+  };
+
+  const scan = async (source: 'camera' | 'gallery') => {
+    if (ai.busy) return;
+    setAi({ busy: true });
+    try {
+      const photo = await labelPhoto(source);
+      if (!photo) return setAi({});
+      fill(await readLabel(photo));
+      setAi({ ok: true, msg: 'Filled in from the label. Check the numbers against the pack, then save.' });
+    } catch (e) {
+      setAi({ msg: e instanceof AiError ? e.message : 'Couldn’t read that photo. Try again.' });
+    }
+  };
 
   const clean = (t: string) => t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
   const g = num(serving);
@@ -55,12 +93,12 @@ export default function CustomFood() {
 
     const per100 = (v: number) => Math.round((v / g) * 1000) / 10;
     const slug = nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'food';
-    let id = `my-${slug}`;
-    for (let i = 2; state.custom[id]; i++) id = `my-${slug}-${i}`;
+    let id = code ? `bc-${code}` : `my-${slug}`;
+    for (let i = 2; !code && state.custom[id]; i++) id = `my-${slug}-${i}`;
     const food: Food = {
       id,
       name: nm,
-      aliases: nm.toLowerCase(),
+      aliases: code ? `${nm.toLowerCase()} ${code}` : nm.toLowerCase(),
       cat,
       icon: CAT_ICON[cat],
       diet,
@@ -72,9 +110,10 @@ export default function CustomFood() {
         { id: base, label: base === 'ml' ? 'ml' : 'gram', grams: 1 },
       ],
       custom: true,
+      ...(fromLabel || code ? { src: 'label' as const } : {}),
     };
     saveCustomFood(food);
-    toast(`Saved ${nm}. It now shows up in search.`);
+    toast(code ? `Saved ${nm}. Scanning this barcode now opens it.` : `Saved ${nm}. It now shows up in search.`);
     goBack();
   };
 
@@ -82,6 +121,25 @@ export default function CustomFood() {
     <Screen edges={['top', 'bottom']}>
       <Header title="Custom food" onBack={() => goBack()} />
       <View style={{ gap: 14, marginTop: 6 }}>
+        {aiAvailable() ? (
+          <Card style={{ gap: 10, backgroundColor: C.coachSoft }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Icon name="text-recognition" size={22} color={C.coach} />
+              <Text style={[T.h3, { flex: 1 }]}>Fill it in from the label</Text>
+            </View>
+            <Text style={T.small}>Photograph the nutrition table on the pack. AI reads it and fills in the form for you to check.</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Button label="Take photo" icon="camera-outline" small style={{ flex: 1 }} loading={ai.busy} onPress={() => scan('camera')} />
+              <Button label="Choose photo" icon="image-outline" kind="ghost" small style={{ flex: 1 }} disabled={ai.busy} onPress={() => scan('gallery')} />
+            </View>
+            {ai.msg ? (
+              <Notice tone={ai.ok ? 'info' : 'warn'} icon={ai.ok ? 'check-circle-outline' : 'alert-circle-outline'}>
+                {ai.msg}
+              </Notice>
+            ) : null}
+            <Text style={T.tiny}>The photo is sent to Google Gemini to read the label and isn’t kept.</Text>
+          </Card>
+        ) : null}
         <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. Mom’s moong dal chilla" maxLength={60} error={err.name} autoCapitalize="sentences" />
         <View style={{ gap: 6 }}>
           <Text style={[T.small, { fontFamily: F.semi }]}>Category</Text>

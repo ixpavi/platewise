@@ -4,10 +4,11 @@ import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Chip, DietMark, Empty, FoodIcon, Header, Icon, RoundButton, tap, useToast } from '@/components/ui';
 import { ALL_FOODS, defaultPortion, type Category, type Food } from '@/data/foods';
+import { aiAvailable, AiError, estimateFood, estimateToFood } from '@/lib/ai';
 import { pickBus } from '@/lib/bus';
 import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { kcalStr, scale } from '@/lib/nutrition';
-import { searchFoods } from '@/lib/search';
+import { normalise, searchFoods } from '@/lib/search';
 import { MEALS, useStore, type Meal } from '@/lib/store';
 import { useMeals } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
@@ -25,7 +26,8 @@ export default function LogFood() {
   const [q, setQ] = useState(params.q ?? '');
   const [filter, setFilter] = useState<Filter>('All');
   const [added, setAdded] = useState<{ id: string; name: string }[]>([]);
-  const { state, addEntries, removeEntry, toggleFav } = useStore();
+  const { state, addEntries, removeEntry, toggleFav, saveCustomFood } = useStore();
+  const [aiBusy, setAiBusy] = useState(false);
   const toast = useToast();
 
   useEffect(
@@ -104,12 +106,37 @@ export default function LogFood() {
     );
   };
 
+  // Not in the database: ask AI for a typical estimate, saved like a custom food (marked as AI).
+  const askAi = async () => {
+    if (aiBusy || query.length < 2) return;
+    const slug = normalise(query).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'food';
+    const id = `ai-${slug}`;
+    const known = state.custom[id];
+    if (known) return open(known); // asked before: no need to ask again
+    setAiBusy(true);
+    try {
+      const food = estimateToFood(id, query, await estimateFood(query));
+      saveCustomFood(food);
+      open(food);
+    } catch (e) {
+      toast(e instanceof AiError ? e.message : 'The AI couldn’t answer right now. Try again.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   const customCard = (
     <View style={styles.customCard}>
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
         <Icon name="plus-box-outline" size={22} color={C.brand} />
         <Text style={[T.body, { flex: 1 }]}>{query && !results.length ? `No match for “${query}”.` : 'Can’t find your food?'} Add it with the values from its label or recipe.</Text>
       </View>
+      {aiAvailable() && query.length >= 2 ? (
+        <>
+          <Button label={`Estimate “${query.length > 22 ? `${query.slice(0, 21)}…` : query}” with AI`} icon="creation" small loading={aiBusy} onPress={askAi} />
+          <Text style={T.tiny}>AI gives a typical estimate from the name, sent to Google Gemini. For packets, reading the label is more accurate.</Text>
+        </>
+      ) : null}
       <Button label="Create a custom food" kind="soft" small onPress={() => router.push({ pathname: '/custom-food', params: { name: query } })} />
     </View>
   );
