@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// Platewise Firestore rules. Paste into Firebase console → Firestore Database → Rules → Publish.
+// Each signed-in user can read and write only their own documents under users/{uid}.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Profile, settings, weights, favourites, custom foods.
+    match /users/{uid} {
+      allow read, delete: if signedInAs(uid);
+      allow create, update: if signedInAs(uid)
+        && request.resource.data.keys().hasOnly(['v', 'rootU', 'account', 'profile', 'settings', 'weights', 'favs', 'recents', 'custom'])
+        && request.resource.data.rootU is number;
+
+      // One document per day, id = yyyy-mm-dd.
+      match /days/{day} {
+        allow read, delete: if signedInAs(uid);
+        allow create, update: if signedInAs(uid)
+          && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.keys().hasOnly(['food', 'waterMl', 'steps', 'sleepHrs', 'workouts', 'u'])
+          && request.resource.data.food is list && request.resource.data.food.size() <= 200
+          && request.resource.data.workouts is list && request.resource.data.workouts.size() <= 50
+          && request.resource.data.waterMl is number && request.resource.data.waterMl <= 10000
+          && request.resource.data.steps is number && request.resource.data.steps <= 100000;
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

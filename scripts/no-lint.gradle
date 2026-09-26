@@ -1,0 +1,4 @@
+// Release lint only matters for Play Store uploads; on Windows its jar cache gets locked and fails the build.
+gradle.allprojects {
+    tasks.matching { it.name.startsWith('lintVital') }.configureEach { enabled = false }
+}

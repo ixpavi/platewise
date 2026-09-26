@@ -1,0 +1,76 @@
+{
+  "expo": {
+    "name": "Platewise",
+    "slug": "platewise",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.platewise.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F6F1",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.platewise.app",
+      "permissions": [],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "allowBackup": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1F4D36",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Platewise uses your photos so you can log a meal from a picture.",
+          "cameraPermission": "Platewise uses the camera to snap your meal and estimate its nutrition."
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Platewise counts your steps to estimate calories burned."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Platewise uses the camera to photograph meals and scan food barcodes.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1F6B47"
+        }
+      ]
+    ],
+    "scheme": "platewise"
+  }
+}
