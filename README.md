@@ -1,9 +1,9 @@
 # Platewise
 
-A calorie and nutrition tracker built for Indian home food. Log a meal by snapping your plate
-and tapping what's on it, scan a packet's barcode, or search 139 everyday dishes with portions
-in katoris, rotis and pieces instead of just grams. Tracks water, steps, workouts, sleep and
-weight too.
+A food calorie counter built for Indian home food. Scan the barcode or QR code on a packet,
+search 139 everyday dishes with portions in katoris, rotis and pieces, or snap your plate and tap
+what's on it. Cooked it yourself? Weigh your portion and type the exact grams. A simple weight
+log shows how you're moving towards your goal.
 
 Built with Expo (React Native). Runs on **Android**, **iOS** and in a **web browser**. Works fully
 offline with no account, and can optionally sync to your own free Firebase project.
@@ -38,12 +38,14 @@ offline with no account, and can optionally sync to your own free Firebase proje
 | Area | What you get |
 | --- | --- |
 | Onboarding | 7 short steps: goal, age, height, weight, target, activity, diet. Builds a daily calorie budget with the Mifflin–St Jeor equation and never goes below a safe minimum. |
-| Home | Week strip, calorie ring (eaten, burned, left), carbs / protein / fat / fibre bars, five meals, water, steps, workouts, sleep, weight, daily tip. |
+| Home | Week strip, calorie ring (eaten, budget, left), carbs / protein / fat / fibre bars, five meals, weight, daily tip. |
+| Barcode and QR scanner | Scan an EAN / UPC barcode, or the GS1 QR code on newer packs (or type the digits), to look up a packaged food on Open Food Facts. |
+| Food search | 139 Indian and everyday foods, typo-tolerant search, Hindi names, favourites, custom foods from a label or recipe, health score. |
+| Portions | Household units (katori, roti, piece, cup) or the exact weight in grams or ml. Calories update as you type. |
 | Snap a meal | Take or pick a photo, tap the foods on the plate (suggestions come from what you usually eat at that meal), adjust portions, log. The photo is saved with the meal. |
-| Barcode scanner | Scan an EAN / UPC barcode (or type the digits) to look up a packaged food on Open Food Facts. |
-| Food search | 139 Indian and everyday foods, typo-tolerant search, Hindi names, household portions, favourites, custom foods, health score. |
-| Progress | 7 and 30 day calorie charts against your budget, macro averages, weight trend, water / steps / sleep averages, top calorie sources. |
-| Reminders | Meal reminders, water reminders through the day, weekly weigh-in. Scheduled on the phone, no server. |
+| Weight | A simple weight log with progress towards your goal and a trend chart. |
+| Progress | 7 and 30 day calorie charts against your budget, macro averages, weight trend, top calorie sources. |
+| Reminders | Breakfast, lunch and dinner reminders at times you choose. Scheduled on the phone, no server. |
 | Accounts | "This phone only" accounts (no internet needed), or cloud accounts with email / password or Google that sync across phones and the web. |
 
 There is no AI in this version. See [Adding automatic food recognition](#adding-automatic-food-recognition).
@@ -105,7 +107,7 @@ npx expo start --tunnel
 1. Tap **Get started**.
 2. Tap **Use without an account (this phone only)**, enter a name, email and password. Nothing leaves the phone.
 3. Answer the 7 onboarding questions to get your calorie plan.
-4. Want to see the charts filled in? Go to **Me → Goals and reminders → Load a sample week**.
+4. Want to see the charts filled in? Go to **Me → Budget and reminders → Load a sample week**.
 
 Everything works in this mode except cloud sync and Google sign-in, which need the optional
 Firebase setup below. The barcode scanner needs an internet connection.
@@ -294,6 +296,14 @@ scripts\build-android.cmd
 phones, and `JAVA_HOME` picks a specific JDK. By default the APK contains `arm64-v8a` (almost
 every phone from the last several years) and `x86_64` (emulators).
 
+To share the app with friends (for example on WhatsApp, where it arrives as a document), build
+it for phones only. The result is about 45 MB and installs on 64-bit and older 32-bit phones:
+
+```bat
+set ABIS=arm64-v8a,armeabi-v7a
+scripts\build-android.cmd
+```
+
 ### macOS, Linux (or Windows with no spaces in the path)
 
 ```bash
@@ -370,16 +380,17 @@ platewise/
 │   │   ├── auth.tsx         Sign up / log in (phone-only, email, Google)
 │   │   ├── onboarding.tsx   7-step plan setup
 │   │   ├── snap.tsx         Photo logging
-│   │   ├── barcode.tsx      Barcode scanner
+│   │   ├── barcode.tsx      Barcode and QR scanner
 │   │   ├── food/[id].tsx    Food detail and portion picker
-│   │   └── settings.tsx     Goals and reminders
+│   │   ├── weight.tsx       Weight log
+│   │   └── settings.tsx     Calorie budget and reminders
 │   ├── components/          Shared UI kit (buttons, cards, sheets, charts)
-│   ├── data/                Food database, workout MET values
+│   ├── data/                Food database
 │   └── lib/                 App logic
 │       ├── store.tsx        App state, saved on the device
 │       ├── sync.tsx         Firestore sync
 │       ├── nutrition.ts     Calorie maths, BMI, health score
-│       ├── barcode.ts       Open Food Facts lookup
+│       ├── barcode.ts       Open Food Facts lookup, QR product codes
 │       ├── reminders.ts     Local notifications
 │       ├── recognition.ts   Plug-in point for automatic food recognition
 │       └── *.web.ts         Browser versions of phone-only features
@@ -452,8 +463,8 @@ grams, or `null` to fall back to tagging) and swap it in. The screens don't need
 | `JAVA_HOME is set to an invalid directory` | Point `JAVA_HOME` to a JDK 17 folder (the one that contains `bin\java.exe`), or unset it and let the script find one. |
 | `SDK location not found` | Set `ANDROID_HOME` to your Android SDK folder, or create `android/local.properties` with `sdk.dir=/path/to/sdk`. |
 | Build says licences are not accepted | Run `sdkmanager --licenses` (see the one-time setup). |
-| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Me → Goals and reminders**. Some phones also need battery optimisation turned off for the app. |
-| Step counter shows nothing | Allow **Physical activity** permission. Emulators have no step sensor. |
+| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Me → Budget and reminders**. Some phones also need battery optimisation turned off for the app. |
+| Scanning a QR code says it has no product details | Many QR codes on packs only link to a website. Scan the barcode (the black bars) instead. |
 
 ## Contributing
 

@@ -61,7 +61,7 @@ if errorlevel 1 (
 
 echo sdk.dir=%ANDROID_HOME:\=/%> android\local.properties
 rem Full path: some shells set NoDefaultCurrentDirectoryInExePath, so cmd won't look in the current folder.
-call "%BUILD_DIR%\android\gradlew.bat" -p "%BUILD_DIR%\android" assembleRelease --init-script "%BUILD_DIR%\scripts\no-lint.gradle" "-PreactNativeArchitectures=%ABIS%" --console=plain
+call "%BUILD_DIR%\android\gradlew.bat" -p "%BUILD_DIR%\android" assembleRelease --init-script "%BUILD_DIR%\scripts\no-lint.gradle" "-PreactNativeArchitectures=%ABIS%" "-Pexpo.useLegacyPackaging=true" --console=plain
 if errorlevel 1 (
   echo Build failed. See the error above.
   exit /b 1

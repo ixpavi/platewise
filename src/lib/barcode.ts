@@ -32,6 +32,23 @@ export function validBarcode(code: string) {
   return (10 - (sum % 10)) % 10 === check;
 }
 
+/**
+ * The product code in anything the scanner reads: a plain barcode, a GS1 Digital Link QR code
+ * (https://…/01/<GTIN>/…, printed on newer packs) or a GS1 element string (01<GTIN>…) from a QR or
+ * Data Matrix code. Returns null for codes without a product number, such as UPI or website QR codes.
+ */
+export function productCodeFromScan(data: string): string | null {
+  const raw = data.trim();
+  if (/^\d+$/.test(raw) && validBarcode(raw)) return raw;
+  const m = raw.match(/\/01\/(\d{8,14})(?:[/?#]|$)/) ?? raw.replace(/^\][A-Za-z]\d/, '').match(/^01(\d{14})/);
+  if (!m) return null;
+  const gtin = m[1].padStart(14, '0');
+  if (!validBarcode(gtin)) return null;
+  // Leading zeros don't change the check digit: GTIN-8 and EAN-13 / UPC are GTIN-14 with zeros in front.
+  if (gtin.startsWith('000000')) return gtin.slice(6);
+  return gtin.startsWith('0') ? gtin.slice(1) : gtin;
+}
+
 const n = (v: unknown) => {
   const x = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN;
   return Number.isFinite(x) && x >= 0 ? x : NaN;

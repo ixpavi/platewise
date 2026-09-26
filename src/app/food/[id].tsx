@@ -1,9 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { Button, Card, Chip, DietMark, Empty, FoodIcon, Header, Notice, Pill, RoundButton, ScoreBadge, Sheet, tap, useToast } from '@/components/ui';
+import { Button, Card, Chip, DietMark, Empty, FoodIcon, Header, Icon, Notice, Pill, RoundButton, ScoreBadge, Sheet, tap, useToast } from '@/components/ui';
 import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
 import { fmt, giBand, healthScore, kcalStr, scale } from '@/lib/nutrition';
@@ -24,10 +24,19 @@ export default function FoodDetail() {
   const [meal, setMeal] = useState<Meal>(entry?.meal ?? ((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : mealForNow()));
   const [qtyText, setQtyText] = useState<string | null>(null);
   const [scoreInfo, setScoreInfo] = useState(false);
+  const qtyInput = useRef<TextInput>(null);
   const sum = useDaySummary(day);
 
   const unit = f?.units.find((u) => u.id === unitId) ?? f?.units[0];
-  const grams = unit ? unit.grams * qty : 0;
+  const byWeight = unit?.grams === 1;
+  const qtyStep = byWeight ? (f?.base === 'ml' ? 50 : 25) : 0.5;
+  const qtyMin = byWeight ? 1 : 0.25;
+  const qtyMax = byWeight ? 3000 : 20;
+  const clampQty = (v: number) => Math.min(qtyMax, Math.max(qtyMin, Math.round(v * 100) / 100));
+  // A typed amount counts straight away, so tapping Add with the keyboard still open logs what was typed.
+  const typed = qtyText ? Number(qtyText) : NaN;
+  const liveQty = Number.isFinite(typed) && typed > 0 ? clampQty(typed) : qty;
+  const grams = unit ? unit.grams * liveQty : 0;
   const n = f ? scale(f, grams) : null;
 
   if (!f || !unit || !n) {
@@ -45,12 +54,10 @@ export default function FoodDetail() {
   const fav = state.favs.includes(f.id);
   const already = entry ? scale(f, entry.grams).kcal : 0;
   const after = sum.total.kcal - already + n.kcal;
-  const budget = sum.targets.kcal + sum.burned;
-  const qtyStep = unit.grams === 1 ? (f.base === 'ml' ? 50 : 25) : 0.5;
-  const qtyMin = unit.grams === 1 ? 5 : 0.25;
-  const qtyMax = unit.grams === 1 ? 3000 : 20;
+  const budget = sum.targets.kcal;
+  const gramUnit = f.units.find((u) => u.grams === 1);
 
-  const setQtySafe = (v: number) => setQty(Math.min(qtyMax, Math.max(qtyMin, Math.round(v * 100) / 100)));
+  const setQtySafe = (v: number) => setQty(clampQty(v));
   const changeUnit = (id: string) => {
     const u = f.units.find((x) => x.id === id);
     if (!u) return;
@@ -64,10 +71,10 @@ export default function FoodDetail() {
   const save = () => {
     if (grams <= 0) return;
     if (entry) {
-      updateEntry(day, entry.id, { unitId, qty, grams, meal });
+      updateEntry(day, entry.id, { unitId, qty: liveQty, grams, meal });
       toast('Entry updated.');
     } else {
-      const [e] = addEntries(day, [{ foodId: f.id, unitId, qty, grams, meal, t: stampFor(day), source: f.custom ? 'custom' : 'search' }]);
+      const [e] = addEntries(day, [{ foodId: f.id, unitId, qty: liveQty, grams, meal, t: stampFor(day), source: f.custom ? 'custom' : 'search' }]);
       toast(`Added to ${meal.toLowerCase()} · ${kcalStr(n.kcal)} kcal`, { label: 'Undo', run: () => removeEntry(day, e.id) });
     }
     tap('success');
@@ -90,106 +97,125 @@ export default function FoodDetail() {
           right={<RoundButton icon={fav ? 'star' : 'star-outline'} color={fav ? C.warn : C.ink} label={fav ? 'Remove favourite' : 'Add to favourites'} onPress={() => toggleFav(f.id)} />}
         />
       </View>
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
-        <View style={styles.hero}>
-          <FoodIcon food={f} size={72} />
-          <View style={{ flex: 1, gap: 6 }}>
-            <Text style={[T.h1, { fontSize: 24 }]}>{f.name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <DietMark diet={f.diet} />
-              <Text style={T.small}>{f.cat}</Text>
-              {f.id.startsWith('bc-') ? <Pill label="Packaged" color={C.coach} bg={C.coachSoft} /> : f.custom ? <Pill label="Your food" color={C.coach} bg={C.coachSoft} /> : null}
+      {/* Keeps the Add button above the keyboard while typing grams. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'web' ? undefined : 'padding'}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          <View style={styles.hero}>
+            <FoodIcon food={f} size={72} />
+            <View style={{ flex: 1, gap: 6 }}>
+              <Text style={[T.h1, { fontSize: 24 }]}>{f.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <DietMark diet={f.diet} />
+                <Text style={T.small}>{f.cat}</Text>
+                {f.id.startsWith('bc-') ? <Pill label="Packaged" color={C.coach} bg={C.coachSoft} /> : f.custom ? <Pill label="Your food" color={C.coach} bg={C.coachSoft} /> : null}
+              </View>
             </View>
+            <Pressable onPress={() => setScoreInfo(true)} accessibilityRole="button" accessibilityLabel="What is the health score">
+              <ScoreBadge score={score} />
+            </Pressable>
           </View>
-          <Pressable onPress={() => setScoreInfo(true)} accessibilityRole="button" accessibilityLabel="What is the health score">
-            <ScoreBadge score={score} />
-          </Pressable>
-        </View>
 
-        <Card style={{ gap: 14 }}>
-          <Text style={T.h3}>How much?</Text>
-          <View style={styles.qtyRow}>
-            <RoundButton icon="minus" label="Less" bg={C.line2} onPress={() => (setQtyText(null), setQtySafe(qty - qtyStep))} />
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <TextInput
-                value={qtyText ?? fmtQty(qty)}
-                onChangeText={(t) => setQtyText(t.replace(/[^0-9.]/g, ''))}
-                onBlur={() => {
-                  if (qtyText != null) {
-                    const v = Number(qtyText);
-                    if (Number.isFinite(v) && v > 0) setQtySafe(v);
-                    setQtyText(null);
-                  }
+          <Card style={{ gap: 14 }}>
+            <Text style={T.h3}>How much?</Text>
+            <View style={styles.qtyRow}>
+              <RoundButton icon="minus" label="Less" bg={C.line2} onPress={() => (setQtyText(null), setQtySafe(liveQty - qtyStep))} />
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <TextInput
+                  ref={qtyInput}
+                  value={qtyText ?? fmtQty(qty)}
+                  onChangeText={(t) => setQtyText(t.replace(/[^0-9.]/g, ''))}
+                  onBlur={() => {
+                    if (qtyText != null) {
+                      const v = Number(qtyText);
+                      if (Number.isFinite(v) && v > 0) setQtySafe(v);
+                      setQtyText(null);
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                  style={styles.qtyInput}
+                  accessibilityLabel="Quantity"
+                  selectTextOnFocus
+                  maxLength={6}
+                />
+                <Text style={T.small}>
+                  {unitLabel(unit.label, liveQty)}
+                  {unit.grams !== 1 ? ` · ${fmt(grams)} ${f.base}` : ''}
+                </Text>
+              </View>
+              <RoundButton icon="plus" label="More" bg={C.line2} onPress={() => (setQtyText(null), setQtySafe(liveQty + qtyStep))} />
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {f.units.map((u) => (
+                <Chip key={u.id} label={u.grams === 1 ? (f.base === 'ml' ? 'ml' : 'grams') : `${u.label} (${u.grams}${f.base})`} active={u.id === unitId} onPress={() => changeUnit(u.id)} tone={C.brand} />
+              ))}
+            </View>
+            {!byWeight && gramUnit ? (
+              <Pressable
+                onPress={() => {
+                  changeUnit(gramUnit.id);
+                  setTimeout(() => qtyInput.current?.focus(), 80);
                 }}
-                keyboardType="decimal-pad"
-                style={styles.qtyInput}
-                accessibilityLabel="Quantity"
-                selectTextOnFocus
-                maxLength={6}
-              />
+                style={styles.weighHint}
+                accessibilityRole="button"
+              >
+                <Icon name="scale" size={18} color={C.brand} />
+                <Text style={[T.small, { color: C.brand, fontFamily: F.semi, flex: 1 }]}>Cooked it at home? Weigh your portion and type the {f.base === 'ml' ? 'ml' : 'grams'}</Text>
+              </Pressable>
+            ) : (
+              <Text style={T.tiny}>Tap the number to type the exact weight of your portion.</Text>
+            )}
+          </Card>
+
+          <Card style={{ marginTop: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+              <Donut carb={n.carb * 4} protein={n.protein * 4} fat={n.fat * 9} />
+              <View style={{ flex: 1 }}>
+                <Text style={[T.num, { fontSize: 40 }]}>{kcalStr(n.kcal)}</Text>
+                <Text style={T.small}>kcal · {kcalStr(n.kcal * 4.184)} kJ</Text>
+                <Text style={[T.tiny, { marginTop: 6 }]}>{Math.round((n.kcal / sum.targets.kcal) * 100)}% of your daily budget</Text>
+              </View>
+            </View>
+            <View style={{ marginTop: 16, gap: 10 }}>
+              <Nut label="Carbs" g={n.carb} pct={pct(n.carb * 4)} color={C.carb} />
+              <Nut label="Protein" g={n.protein} pct={pct(n.protein * 4)} color={C.protein} />
+              <Nut label="Fat" g={n.fat} pct={pct(n.fat * 9)} color={C.fat} />
+              <View style={styles.split} />
+              <Nut label="Fibre" g={n.fibre} color={C.fibre} />
+              <Nut label="Sugar" g={n.sugar} color={C.ink3} />
+              <View style={styles.nutRow}>
+                <Text style={T.body}>Glycemic index</Text>
+                <Text style={[T.body, { fontFamily: F.bold, color: f.gi == null ? C.ink3 : f.gi <= 55 ? C.good : f.gi < 70 ? C.warn : C.bad }]}>
+                  {f.gi == null ? (f.n.carb < 5 ? 'Not relevant' : 'Not measured') : `${f.gi} · ${giBand(f.gi)}`}
+                </Text>
+              </View>
+            </View>
+          </Card>
+
+          <View style={{ marginTop: 12 }}>
+            <Notice icon={after > budget ? 'alert-circle-outline' : 'check-circle-outline'} tone={after > budget ? 'warn' : 'info'}>
               <Text style={T.small}>
-                {unitLabel(unit.label, qty)}
-                {unit.grams !== 1 ? ` · ${fmt(grams)} ${f.base}` : ''}
+                {entry ? 'With this change' : 'After this'}, {isToday(day) ? 'today' : relativeDay(day).toLowerCase()} reaches <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(after)}</Text> of{' '}
+                <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(budget)}</Text> kcal{after > budget ? `, ${kcalStr(after - budget)} over.` : `, ${kcalStr(budget - after)} left.`}
               </Text>
-            </View>
-            <RoundButton icon="plus" label="More" bg={C.line2} onPress={() => (setQtyText(null), setQtySafe(qty + qtyStep))} />
+            </Notice>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            {f.units.map((u) => (
-              <Chip key={u.id} label={u.grams === 1 ? (f.base === 'ml' ? 'ml' : 'grams') : `${u.label} (${u.grams}${f.base})`} active={u.id === unitId} onPress={() => changeUnit(u.id)} tone={C.brand} />
+
+          <Text style={[T.label, { marginTop: 20, marginBottom: 8 }]}>Meal</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+            {MEALS.map((m) => (
+              <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
             ))}
-          </View>
-        </Card>
-
-        <Card style={{ marginTop: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <Donut carb={n.carb * 4} protein={n.protein * 4} fat={n.fat * 9} />
-            <View style={{ flex: 1 }}>
-              <Text style={[T.num, { fontSize: 40 }]}>{kcalStr(n.kcal)}</Text>
-              <Text style={T.small}>kcal · {kcalStr(n.kcal * 4.184)} kJ</Text>
-              <Text style={[T.tiny, { marginTop: 6 }]}>{Math.round((n.kcal / sum.targets.kcal) * 100)}% of your daily budget</Text>
-            </View>
-          </View>
-          <View style={{ marginTop: 16, gap: 10 }}>
-            <Nut label="Carbs" g={n.carb} pct={pct(n.carb * 4)} color={C.carb} />
-            <Nut label="Protein" g={n.protein} pct={pct(n.protein * 4)} color={C.protein} />
-            <Nut label="Fat" g={n.fat} pct={pct(n.fat * 9)} color={C.fat} />
-            <View style={styles.split} />
-            <Nut label="Fibre" g={n.fibre} color={C.fibre} />
-            <Nut label="Sugar" g={n.sugar} color={C.ink3} />
-            <View style={styles.nutRow}>
-              <Text style={T.body}>Glycemic index</Text>
-              <Text style={[T.body, { fontFamily: F.bold, color: f.gi == null ? C.ink3 : f.gi <= 55 ? C.good : f.gi < 70 ? C.warn : C.bad }]}>
-                {f.gi == null ? (f.n.carb < 5 ? 'Not relevant' : 'Not measured') : `${f.gi} · ${giBand(f.gi)}`}
-              </Text>
-            </View>
-          </View>
-        </Card>
-
-        <View style={{ marginTop: 12 }}>
-          <Notice icon={after > budget ? 'alert-circle-outline' : 'check-circle-outline'} tone={after > budget ? 'warn' : 'info'}>
-            <Text style={T.small}>
-              {entry ? 'With this change' : 'After this'}, {isToday(day) ? 'today' : relativeDay(day).toLowerCase()} reaches <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(after)}</Text> of{' '}
-              <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(budget)}</Text> kcal{after > budget ? `, ${kcalStr(after - budget)} over.` : `, ${kcalStr(budget - after)} left.`}
-            </Text>
-          </Notice>
-        </View>
-
-        <Text style={[T.label, { marginTop: 20, marginBottom: 8 }]}>Meal</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {MEALS.map((m) => (
-            <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
-          ))}
+          </ScrollView>
+          <Text style={[T.tiny, { marginTop: 18 }]}>
+            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {f.id.startsWith('bc-') ? 'From Open Food Facts; check against the pack.' : f.custom ? 'Values you entered for this food.' : 'Approximate reference values (IFCT / USDA).'}
+          </Text>
         </ScrollView>
-        <Text style={[T.tiny, { marginTop: 18 }]}>
-          Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {f.id.startsWith('bc-') ? 'From Open Food Facts; check against the pack.' : f.custom ? 'Values you entered for this food.' : 'Approximate reference values (IFCT / USDA).'}
-        </Text>
-      </ScrollView>
 
-      <View style={styles.bottom}>
-        {entry ? <RoundButton icon="trash-can-outline" label="Remove entry" bg="#FBE4DF" color={C.bad} size={52} onPress={remove} /> : null}
-        <Button label={entry ? 'Save changes' : `Add to ${meal} · ${kcalStr(n.kcal)} kcal`} onPress={save} style={{ flex: 1 }} disabled={grams <= 0} />
-      </View>
+        <View style={styles.bottom}>
+          {entry ? <RoundButton icon="trash-can-outline" label="Remove entry" bg="#FBE4DF" color={C.bad} size={52} onPress={remove} /> : null}
+          <Button label={entry ? 'Save changes' : `Add to ${meal} · ${kcalStr(n.kcal)} kcal`} onPress={save} style={{ flex: 1 }} disabled={grams <= 0} />
+        </View>
+      </KeyboardAvoidingView>
 
       <Sheet visible={scoreInfo} onClose={() => setScoreInfo(false)} title={`Health score ${score}/10`}>
         <Text style={[T.body, { color: C.ink2 }]}>
@@ -239,7 +265,8 @@ function Donut({ carb, protein, fat }: { carb: number; protein: number; fat: num
 const styles = StyleSheet.create({
   hero: { flexDirection: 'row', alignItems: 'center', gap: 14, marginVertical: 12 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  qtyInput: { fontFamily: F.displayHeavy, fontSize: 34, color: C.ink, textAlign: 'center', minWidth: 90, paddingVertical: 0, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}) },
+  weighHint: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line2 },
+  qtyInput: { fontFamily: F.displayHeavy, fontSize: 34, color: C.ink, textAlign: 'center', minWidth: 90, paddingVertical: 0, borderBottomWidth: 2, borderBottomColor: C.line, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : {}) },
   nutRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   split: { height: 1, backgroundColor: C.line2, marginVertical: 2 },
   bottom: { flexDirection: 'row', gap: 10, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, backgroundColor: C.bg, borderTopWidth: 1, borderTopColor: C.line2 },

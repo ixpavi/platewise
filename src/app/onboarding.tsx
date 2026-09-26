@@ -208,7 +208,6 @@ export default function Onboarding() {
               <Macro label="Fat" g={plan.fat} color={C.fat} />
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Mini icon="water" color={C.water} label="Water" value={`${Math.round(plan.waterMl / 10) / 100} L`} />
               <Mini icon="barley" color={C.fibre} label="Fibre" value={`${plan.fibre} g`} />
             </View>
             {weeks ? (

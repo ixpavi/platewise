@@ -4,11 +4,6 @@ export type Reminders = {
   breakfast: string;
   lunch: string;
   dinner: string;
-  water: boolean;
-  waterFrom: number;
-  waterTo: number;
-  weighIn: boolean;
-  weighDay: number;
 };
 
 export const DEFAULT_REMINDERS: Reminders = {
@@ -16,11 +11,6 @@ export const DEFAULT_REMINDERS: Reminders = {
   breakfast: '09:00',
   lunch: '13:30',
   dinner: '20:30',
-  water: false,
-  waterFrom: 10,
-  waterTo: 20,
-  weighIn: false,
-  weighDay: 1,
 };
 
 export const remindersSupported = false;

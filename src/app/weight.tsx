@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Card, Empty, Header, Notice, RoundButton, Screen, Section, Stepper, useToast } from '@/components/ui';
 import { dayKey, relativeDay } from '@/lib/dates';
-import { bmi, bmiBand, fmt } from '@/lib/nutrition';
+import { bmi, bmiBand, fmtKg } from '@/lib/nutrition';
 import { useStore } from '@/lib/store';
 import { C, F, T } from '@/theme';
 import { goBack } from '@/lib/nav';
@@ -31,7 +31,7 @@ export default function Weight() {
           </Text>
           {prev ? (
             <Text style={[T.small, { fontFamily: F.bold, color: diff === 0 ? C.ink2 : (diff < 0) === (p.goal !== 'gain') ? C.good : C.warn }]}>
-              {diff === 0 ? 'Same as last time' : `${diff > 0 ? '+' : '−'}${fmt(Math.abs(diff))} kg vs ${relativeDay(prev.day).toLowerCase()}`}
+              {diff === 0 ? 'Same as last time' : `${diff > 0 ? '+' : '−'}${fmtKg(Math.abs(diff))} kg vs ${relativeDay(prev.day).toLowerCase()}`}
             </Text>
           ) : null}
         </View>
@@ -53,7 +53,7 @@ export default function Weight() {
             {[...state.weights].reverse().map((w, i, arr) => (
               <View key={w.day} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: i === arr.length - 1 ? 0 : 1, borderBottomColor: C.line2 }}>
                 <Text style={[T.body, { flex: 1 }]}>{relativeDay(w.day)}</Text>
-                <Text style={[T.body, { fontFamily: F.bold, marginRight: 12 }]}>{fmt(w.kg)} kg</Text>
+                <Text style={[T.body, { fontFamily: F.bold, marginRight: 12 }]}>{fmtKg(w.kg)} kg</Text>
                 <RoundButton
                   icon="close"
                   label={`Delete ${relativeDay(w.day)}`}

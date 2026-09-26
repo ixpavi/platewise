@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Icon, Notice, Pill, Screen, Section, Sheet, useToast } from '@/components/ui';
 import { AuthError, cloudSignOut, deleteCloudUser } from '@/lib/cloud-auth';
 import { cloudEnabled } from '@/lib/firebase';
-import { ACTIVITY_HINT, bmi, bmiBand, fmt, kcalStr } from '@/lib/nutrition';
+import { ACTIVITY_HINT, bmi, bmiBand, fmtKg, kcalStr } from '@/lib/nutrition';
 import { applyReminders, DEFAULT_REMINDERS } from '@/lib/reminders';
 import { useStore } from '@/lib/store';
 import { useSync } from '@/lib/sync';
@@ -71,7 +71,7 @@ export default function Me() {
   const b = bmi(p);
   const band = bmiBand(b);
   const toneColor = { good: C.good, warn: C.warn, bad: C.bad }[band.tone];
-  const goalText = p.goal === 'lose' ? `Lose ${fmt(p.weightKg - p.targetKg)} kg · ${p.pace} kg/week` : p.goal === 'gain' ? `Gain ${fmt(p.targetKg - p.weightKg)} kg · ${p.pace} kg/week` : 'Eat healthier, keep weight steady';
+  const goalText = p.goal === 'lose' ? `Lose ${fmtKg(p.weightKg - p.targetKg)} kg · ${p.pace} kg/week` : p.goal === 'gain' ? `Gain ${fmtKg(p.targetKg - p.weightKg)} kg · ${p.pace} kg/week` : 'Eat healthier, keep weight steady';
   const loggedDays = Object.values(state.days).filter((d) => d.food.length).length;
   const entries = Object.values(state.days).reduce((s, d) => s + d.food.length, 0);
 
@@ -94,7 +94,7 @@ export default function Me() {
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Stat value={String(loggedDays)} label="Days logged" />
         <Stat value={String(entries)} label="Foods logged" />
-        <Stat value={`${fmt(p.weightKg)}`} label="kg now" />
+        <Stat value={fmtKg(p.weightKg)} label="kg now" />
       </View>
 
       <AccountCard pending={pending} lastSynced={sync.lastSynced} />
@@ -119,7 +119,7 @@ export default function Me() {
 
       <Section title="Settings">
         <Card style={{ padding: 0 }}>
-          <Link icon="tune-variant" label="Goals and reminders" sub="Water, steps, meal and weigh-in reminders" onPress={() => router.push('/settings')} />
+          <Link icon="tune-variant" label="Budget and reminders" sub="Calorie budget and meal reminders" onPress={() => router.push('/settings')} />
           <Link icon="image-multiple-outline" label="Meal photos" sub={photoCount ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : 'Photos from your photo logs'} onPress={() => router.push('/photos')} />
           <Link icon="scale-bathroom" label="Weight log" sub={`${state.weights.length} entries`} onPress={() => router.push('/weight')} />
           <Link icon="star-outline" label="Favourite foods" sub={`${state.favs.length} saved`} onPress={() => router.push({ pathname: '/log', params: {} })} last />

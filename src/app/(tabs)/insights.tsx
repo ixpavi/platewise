@@ -2,9 +2,9 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Text, useWindowDimensions, View } from 'react-native';
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
-import { Bar, Card, Empty, Icon, Screen, Section, Segmented } from '@/components/ui';
+import { Bar, Card, Empty, Screen, Section, Segmented } from '@/components/ui';
 import { fromKey } from '@/lib/dates';
-import { fmt, kcalStr, scale } from '@/lib/nutrition';
+import { fmt, fmtKg, kcalStr, scale } from '@/lib/nutrition';
 import { useStore } from '@/lib/store';
 import { useRange, useTargets } from '@/lib/summary';
 import { C, F, T } from '@/theme';
@@ -99,14 +99,6 @@ export default function Insights() {
 
       {logged.length ? (
         <>
-          <Section title="Habits">
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Habit icon="water" color={C.water} label="Water" value={`${fmt(avg((d) => d.waterMl, days) / 1000)} L`} sub="avg a day" />
-              <Habit icon="shoe-print" color={C.steps} label="Steps" value={Math.round(avg((d) => d.steps, days)).toLocaleString('en-IN')} sub="avg a day" />
-              <Habit icon="power-sleep" color={C.sleep} label="Sleep" value={`${fmt(avg((d) => d.sleepHrs ?? 0, days.filter((d) => d.sleepHrs != null)))} h`} sub="avg a night" />
-            </View>
-          </Section>
-
           <Section title="Where your calories came from">
             <Card style={{ gap: 12 }}>
               {topFoods.map(({ f, kcal }) => (
@@ -162,18 +154,6 @@ function MacroRow({ label, g, target, pct, color }: { label: string; g: number; 
     </View>
   );
 }
-function Habit({ icon, color, label, value, sub }: { icon: string; color: string; label: string; value: string; sub: string }) {
-  return (
-    <Card style={{ flex: 1, padding: 12, gap: 4 }}>
-      <Icon name={icon} size={20} color={color} />
-      <Text style={[T.num, { fontSize: 19 }]}>{value}</Text>
-      <Text style={T.tiny}>
-        {label} · {sub}
-      </Text>
-    </Card>
-  );
-}
-
 function CalorieChart({ days, target, width }: { days: { key: string; total: { kcal: number }; logged: boolean }[]; target: number; width: number }) {
   const H = 170;
   const pad = { l: 34, r: 6, t: 14, b: 22 };
@@ -235,12 +215,12 @@ function WeightChart({ points, target, width }: { points: { day: string; kg: num
   return (
     <View>
       <Text style={[T.small, { marginBottom: 6 }]}>
-        <Text style={{ fontFamily: F.bold, color: C.ink }}>{fmt(last.kg)} kg</Text> now · {change === 0 ? 'no change' : `${change > 0 ? '+' : '−'}${fmt(Math.abs(change))} kg`} since {fromKey(points[0].day).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+        <Text style={{ fontFamily: F.bold, color: C.ink }}>{fmtKg(last.kg)} kg</Text> now · {change === 0 ? 'no change' : `${change > 0 ? '+' : '−'}${fmtKg(Math.abs(change))} kg`} since {fromKey(points[0].day).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
       </Text>
       <Svg width={width} height={H} accessibilityLabel="Weight over time">
         {ticks.map((v) => (
           <SvgText key={v} x={pad.l - 6} y={y(v) + 4} fontSize={10} fill={C.ink3} textAnchor="end" fontFamily="DMSans_500Medium">
-            {fmt(v)}
+            {fmtKg(v)}
           </SvgText>
         ))}
         {ticks.map((v) => (
@@ -258,7 +238,7 @@ function WeightChart({ points, target, width }: { points: { day: string; kg: num
           {fromKey(last.day).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
         </SvgText>
       </Svg>
-      {target != null ? <Text style={[T.tiny, { color: C.weight }]}>Dashed line: goal {fmt(target)} kg</Text> : null}
+      {target != null ? <Text style={[T.tiny, { color: C.weight }]}>Dashed line: goal {fmtKg(target)} kg</Text> : null}
     </View>
   );
 }

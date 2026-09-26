@@ -25,11 +25,11 @@ export const ACTIVITY_HINT: Record<ActivityLevel, string> = {
 };
 export const KCAL_PER_KG = 7700;
 
-export type Targets = { kcal: number; carb: number; protein: number; fat: number; fibre: number; waterMl: number; bmr: number; tdee: number; floorHit: boolean };
+export type Targets = { kcal: number; carb: number; protein: number; fat: number; fibre: number; bmr: number; tdee: number; floorHit: boolean };
 
 /** Daily budget with the Mifflin–St Jeor equation, a pace-based deficit or surplus, and safety floors. */
 export function targets(p: Profile | null, override?: number | null): Targets {
-  if (!p) return { kcal: 2000, carb: 250, protein: 60, fat: 62, fibre: 30, waterMl: 2500, bmr: 0, tdee: 2000, floorHit: false };
+  if (!p) return { kcal: 2000, carb: 250, protein: 60, fat: 62, fibre: 30, bmr: 0, tdee: 2000, floorHit: false };
   const sex = p.gender === 'Male' ? 5 : p.gender === 'Female' ? -161 : -78;
   const bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + sex;
   const tdee = bmr * ACTIVITY_FACTOR[p.activity];
@@ -48,8 +48,7 @@ export function targets(p: Profile | null, override?: number | null): Targets {
   const fat = Math.round((kcal * 0.28) / 9);
   const carb = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   const fibre = Math.round((kcal / 1000) * 14);
-  const waterMl = Math.round((p.weightKg * 35) / 250) * 250;
-  return { kcal, carb, protein, fat, fibre, waterMl, bmr: Math.round(bmr), tdee: Math.round(tdee), floorHit };
+  return { kcal, carb, protein, fat, fibre, bmr: Math.round(bmr), tdee: Math.round(tdee), floorHit };
 }
 
 export function bmi(p: Profile) {
@@ -73,6 +72,11 @@ export function scale(food: Food, grams: number): Nutrients {
 
 export function add(a: Nutrients, b: Nutrients): Nutrients {
   return { kcal: a.kcal + b.kcal, carb: a.carb + b.carb, protein: a.protein + b.protein, fat: a.fat + b.fat, fibre: a.fibre + b.fibre, sugar: a.sugar + b.sugar };
+}
+
+/** Body weight keeps its decimal (69.7 kg), unlike fmt, which rounds anything from 10 up. */
+export function fmtKg(v: number) {
+  return Number.isFinite(v) ? String(Math.round(v * 10) / 10) : '0';
 }
 
 export function fmt(v: number) {
@@ -119,10 +123,6 @@ export function giBand(gi: number | null) {
   return gi <= 55 ? 'Low' : gi < 70 ? 'Medium' : 'High';
 }
 
-/** Approximate kcal from walking steps: ~0.04 kcal per step at 70 kg, scaled by weight. */
-export function stepKcal(steps: number, weightKg = 65) {
-  return steps * 0.04 * (weightKg / 70);
-}
 
 export function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v));

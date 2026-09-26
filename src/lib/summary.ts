@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Food, Nutrients } from '@/data/foods';
 import { MEALS, useStore, type Entry, type Meal } from './store';
-import { add, scale, stepKcal, targets, ZERO, type Targets } from './nutrition';
+import { add, scale, targets, ZERO, type Targets } from './nutrition';
 import { lastNDays } from './dates';
 
 export type Row = Entry & { food: Food; nut: Nutrients };
@@ -9,14 +9,7 @@ export type DaySummary = {
   rows: Row[];
   byMeal: Record<Meal, { rows: Row[]; total: Nutrients }>;
   total: Nutrients;
-  burned: number;
-  workoutKcal: number;
-  stepsKcal: number;
   targets: Targets;
-  waterGoal: number;
-  waterMl: number;
-  steps: number;
-  sleepHrs: number | null;
 };
 
 export function useTargets() {
@@ -25,12 +18,11 @@ export function useTargets() {
 }
 
 export function useDaySummary(key: string): DaySummary {
-  const { state, food, day } = useStore();
+  const { food, day } = useStore();
   const t = useTargets();
   return useMemo(() => {
-    const d = day(key);
-    const rows: Row[] = d.food
-      .map((e) => {
+    const rows: Row[] = day(key)
+      .food.map((e) => {
         const f = food(e.foodId);
         return f ? { ...e, food: f, nut: scale(f, e.grams) } : null;
       })
@@ -43,25 +35,11 @@ export function useDaySummary(key: string): DaySummary {
       byMeal[r.meal].total = add(byMeal[r.meal].total, r.nut);
       total = add(total, r.nut);
     }
-    const workoutKcal = d.workouts.reduce((s, w) => s + w.kcal, 0);
-    const stepsKcal = stepKcal(d.steps, state.profile?.weightKg);
-    return {
-      rows,
-      byMeal,
-      total,
-      burned: Math.round(workoutKcal + stepsKcal),
-      workoutKcal,
-      stepsKcal,
-      targets: t,
-      waterGoal: state.settings.waterGoalMl ?? t.waterMl,
-      waterMl: d.waterMl,
-      steps: d.steps,
-      sleepHrs: d.sleepHrs,
-    };
-  }, [key, day, food, t, state.profile?.weightKg, state.settings.waterGoalMl]);
+    return { rows, byMeal, total, targets: t };
+  }, [key, day, food, t]);
 }
 
-/** Totals for a list of days (used by Insights). */
+/** Totals for a list of days (used by Progress). */
 export function useRange(days: number) {
   const { food, day } = useStore();
   return useMemo(() => {
@@ -72,7 +50,7 @@ export function useRange(days: number) {
         const f = food(e.foodId);
         if (f) total = add(total, scale(f, e.grams));
       }
-      return { key: k, total, logged: d.food.length > 0, waterMl: d.waterMl, steps: d.steps, sleepHrs: d.sleepHrs, workoutKcal: d.workouts.reduce((s, w) => s + w.kcal, 0) };
+      return { key: k, total, logged: d.food.length > 0 };
     });
   }, [days, day, food]);
 }

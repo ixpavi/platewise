@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Field, Icon, LightStatusBar, Notice, RoundButton, Sheet, tap } from '@/components/ui';
-import { lookupBarcode, LookupError, validBarcode } from '@/lib/barcode';
+import { lookupBarcode, LookupError, productCodeFromScan, validBarcode } from '@/lib/barcode';
 import { dayKey } from '@/lib/dates';
 import { goBack } from '@/lib/nav';
 import { useStore } from '@/lib/store';
@@ -24,16 +24,24 @@ export default function Barcode() {
   const [manual, setManual] = useState(false);
   const [typed, setTyped] = useState('');
   const [typedErr, setTypedErr] = useState('');
+  const [qrHint, setQrHint] = useState(false);
   const lock = useRef(false);
   const ctl = useRef<AbortController | null>(null);
 
   useEffect(() => () => ctl.current?.abort(), []);
+  // The "not a product QR" hint fades once the stray QR code is out of view.
+  useEffect(() => {
+    if (!qrHint) return;
+    const t = setTimeout(() => setQrHint(false), 4000);
+    return () => clearTimeout(t);
+  }, [qrHint]);
 
   const open = (foodId: string) => router.replace({ pathname: '/food/[id]', params: { id: foodId, meal, day } });
 
   const lookup = async (code: string) => {
     if (lock.current) return;
     lock.current = true;
+    setQrHint(false);
     tap();
     // Scanned before: no need to hit the network again.
     const known = state.custom[`bc-${code}`];
@@ -60,9 +68,10 @@ export default function Barcode() {
 
   const onScan = (s: BarcodeScanningResult) => {
     if (lock.current || result.k !== 'idle') return;
-    const code = s.data.replace(/\D/g, '');
-    if (!validBarcode(code)) return; // partial or misread scan: keep scanning
-    lookup(code);
+    const code = productCodeFromScan(s.data);
+    if (code) return lookup(code);
+    // A QR code without a product number (payment, website): say so, keep scanning.
+    if (s.type === 'qr' || s.type === 'datamatrix') setQrHint(true);
   };
 
   const again = () => {
@@ -89,7 +98,7 @@ export default function Barcode() {
       <LightStatusBar />
       <View style={styles.top}>
         <RoundButton icon="close" label="Close" bg="rgba(255,255,255,0.12)" color="#fff" onPress={goBack} />
-        <Text style={[T.h3, { color: '#fff', flex: 1, textAlign: 'center' }]}>Scan a barcode</Text>
+        <Text style={[T.h3, { color: '#fff', flex: 1, textAlign: 'center' }]}>Scan barcode or QR</Text>
         {granted && Platform.OS !== 'web' ? (
           <RoundButton icon={torch ? 'flashlight-off' : 'flashlight'} label={torch ? 'Turn torch off' : 'Turn torch on'} bg="rgba(255,255,255,0.12)" color="#fff" onPress={() => setTorch(!torch)} />
         ) : (
@@ -117,7 +126,7 @@ export default function Barcode() {
               style={StyleSheet.absoluteFill}
               facing="back"
               enableTorch={torch}
-              barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'] }}
+              barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'qr', 'datamatrix'] }}
               onBarcodeScanned={result.k === 'idle' ? onScan : undefined}
             />
             <View style={[styles.frame, { pointerEvents: 'none' }]}>
@@ -130,7 +139,9 @@ export default function Barcode() {
       <View style={styles.panel}>
         {result.k === 'idle' ? (
           <>
-            <Text style={[T.body, { color: '#fff', textAlign: 'center' }]}>Point at the barcode on a packet. It scans automatically.</Text>
+            <Text style={[T.body, { color: qrHint ? C.citrus : '#fff', textAlign: 'center' }]}>
+              {qrHint ? 'That QR code has no product details. Try the barcode (the black bars) on the pack.' : 'Point at the barcode or QR code on a packet. It scans automatically.'}
+            </Text>
             <Button label="Type the barcode instead" icon="keyboard-outline" kind="onDark" small onPress={() => setManual(true)} />
           </>
         ) : result.k === 'looking' ? (

@@ -1,18 +1,14 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Bar, Button, Card, FoodIcon, Icon, Notice, Ring, RoundButton, Screen, Section, Sheet, Stepper, Field, useToast } from '@/components/ui';
+import { Bar, Card, FoodIcon, Icon, Notice, Ring, RoundButton, Screen, Section, useToast } from '@/components/ui';
 import { PhotoStrip, PhotoViewer } from '@/components/photos';
-import { ACTIVITY_BY_ID } from '@/data/activities';
 import { addDays, dayKey, fromKey, greeting, isToday, lastNDays, relativeDay, weekdayShort } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
-import { fmt, kcalStr } from '@/lib/nutrition';
+import { fmt, fmtKg, kcalStr } from '@/lib/nutrition';
 import { MEALS, useStore, type Meal } from '@/lib/store';
-import { useStepSensor } from '@/lib/steps';
 import { mealForNow, useDaySummary, type DaySummary } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
-
-const litres = (ml: number) => String(Math.round(ml / 10) / 100);
 
 const MEAL_SHARE: Record<Meal, number> = { Breakfast: 0.25, 'Morning snack': 0.1, Lunch: 0.3, 'Evening snack': 0.1, Dinner: 0.25 };
 const MEAL_ICON: Record<Meal, string> = { Breakfast: 'coffee-outline', 'Morning snack': 'food-apple-outline', Lunch: 'silverware-fork-knife', 'Evening snack': 'cookie-outline', Dinner: 'weather-night' };
@@ -21,7 +17,6 @@ export default function Home() {
   const { state, day } = useStore();
   const [selected, setSelected] = useState(dayKey());
   const sum = useDaySummary(selected);
-  const stepSource = useStepSensor();
   const first = (state.profile?.name || state.account?.name || 'there').split(' ')[0];
 
   const streak = useMemo(() => {
@@ -82,18 +77,8 @@ export default function Home() {
         </View>
       </Section>
 
-      <Section title="Trackers">
-        <View style={{ gap: 10 }}>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <WaterCard day={selected} sum={sum} />
-            <StepsCard day={selected} sum={sum} source={stepSource} />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <WorkoutCard day={selected} sum={sum} />
-            <SleepCard day={selected} sum={sum} />
-          </View>
-          <WeightCard />
-        </View>
+      <Section title="Weight">
+        <WeightCard />
       </Section>
 
       <DailyTip sum={sum} />
@@ -125,7 +110,7 @@ function DateStrip({ selected, onSelect, hasLog }: { selected: string; onSelect:
 
 function BudgetCard({ sum }: { sum: DaySummary }) {
   const t = sum.targets;
-  const budget = t.kcal + sum.burned;
+  const budget = t.kcal;
   const left = budget - sum.total.kcal;
   const over = left < 0;
   return (
@@ -136,12 +121,8 @@ function BudgetCard({ sum }: { sum: DaySummary }) {
           <Text style={[T.num, { fontSize: 30, color: over ? C.bad : C.ink }]}>{kcalStr(Math.abs(left))}</Text>
           <Text style={T.tiny}>{over ? 'kcal over' : 'kcal left'}</Text>
         </Ring>
-        <Stat label="Burned" value={kcalStr(sum.burned)} icon="fire" />
+        <Stat label="Budget" value={kcalStr(budget)} icon="flag-checkered" />
       </View>
-      <Text style={[T.tiny, { textAlign: 'center', marginTop: 6 }]}>
-        Budget {kcalStr(t.kcal)}
-        {sum.burned ? ` + ${kcalStr(sum.burned)} burned` : ''}
-      </Text>
       <View style={styles.macros}>
         <MacroBar label="Carbs" v={sum.total.carb} t={t.carb} color={C.carb} />
         <MacroBar label="Protein" v={sum.total.protein} t={t.protein} color={C.protein} />
@@ -248,148 +229,7 @@ function MealCard({ meal, day, sum }: { meal: Meal; day: string; sum: DaySummary
   );
 }
 
-/* ---------------- trackers ---------------- */
-
-function WaterCard({ day, sum }: { day: string; sum: DaySummary }) {
-  const { addWater, state } = useStore();
-  const glass = state.settings.glassMl;
-  const glasses = Math.round(sum.waterMl / glass);
-  const goalGlasses = Math.max(1, Math.round(sum.waterGoal / glass));
-  return (
-    <Card style={[styles.tracker]}>
-      <View style={styles.trackerHead}>
-        <Icon name="water" size={20} color={C.water} />
-        <Text style={T.h3}>Water</Text>
-      </View>
-      <Text style={[T.num, { fontSize: 24 }]}>
-        {litres(sum.waterMl)}
-        <Text style={[T.small, { fontFamily: F.medium }]}> / {litres(sum.waterGoal)} L</Text>
-      </Text>
-      <View style={styles.glasses}>
-        {Array.from({ length: Math.min(goalGlasses, 12) }, (_, i) => (
-          <View key={i} style={[styles.glass, i < glasses && { backgroundColor: C.water }]} />
-        ))}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 'auto' }}>
-        <RoundButton icon="minus" label="Remove a glass" bg={C.waterSoft} color={C.water} size={36} onPress={() => addWater(day, -glass)} />
-        <Pressable onPress={() => addWater(day, glass)} style={styles.addGlass} accessibilityRole="button" accessibilityLabel={`Add ${glass} ml`}>
-          <Icon name="plus" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontFamily: F.bold }}>{glass} ml</Text>
-        </Pressable>
-      </View>
-    </Card>
-  );
-}
-
-function StepsCard({ day, sum, source }: { day: string; sum: DaySummary; source: string }) {
-  const { state, setSteps } = useStore();
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState('');
-  const goal = state.settings.stepGoal;
-  const live = source === 'sensor' && isToday(day);
-  return (
-    <Card style={styles.tracker} onPress={live ? undefined : () => (setVal(sum.steps ? String(sum.steps) : ''), setOpen(true))}>
-      <View style={styles.trackerHead}>
-        <Icon name="shoe-print" size={20} color={C.steps} />
-        <Text style={T.h3}>Steps</Text>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <Ring size={58} stroke={7} progress={sum.steps / goal} color={C.steps} track={C.stepsSoft}>
-          <Icon name="shoe-print" size={18} color={C.steps} />
-        </Ring>
-        <View style={{ flex: 1 }}>
-          <Text style={[T.num, { fontSize: 22 }]}>{sum.steps.toLocaleString('en-IN')}</Text>
-          <Text style={T.tiny}>of {goal.toLocaleString('en-IN')}</Text>
-        </View>
-      </View>
-      <Text style={[T.tiny, { marginTop: 'auto' }]}>
-        {live ? `Counting · ${kcalStr(sum.stepsKcal)} kcal` : source === 'denied' ? 'Motion access off · tap to enter' : 'Tap to enter steps'}
-      </Text>
-      <Sheet visible={open} onClose={() => setOpen(false)} title="Steps">
-        <Field label={`Steps on ${relativeDay(day).toLowerCase()}`} value={val} onChangeText={(t) => setVal(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="e.g. 6500" maxLength={6} />
-        <Text style={[T.small, { marginVertical: 12 }]}>
-          {source === 'unavailable' ? 'This device has no step sensor, so enter steps from your watch or fitness band.' : source === 'denied' ? 'Allow motion access in your phone settings to count steps automatically.' : 'Past days need to be entered by hand.'}
-        </Text>
-        <Button
-          label="Save"
-          onPress={() => {
-            setSteps(day, Number(val) || 0);
-            setOpen(false);
-          }}
-        />
-      </Sheet>
-    </Card>
-  );
-}
-
-function WorkoutCard({ day, sum }: { day: string; sum: DaySummary }) {
-  const { day: getDay } = useStore();
-  const list = getDay(day).workouts;
-  return (
-    <Card style={styles.tracker} onPress={() => router.push({ pathname: '/workout', params: { day } })} accessibilityLabel="Workouts">
-      <View style={styles.trackerHead}>
-        <Icon name="run" size={20} color={C.workout} />
-        <Text style={T.h3}>Workout</Text>
-      </View>
-      <Text style={[T.num, { fontSize: 22 }]}>
-        {kcalStr(sum.workoutKcal)}
-        <Text style={[T.small, { fontFamily: F.medium }]}> kcal</Text>
-      </Text>
-      <Text style={T.tiny} numberOfLines={2}>
-        {list.length ? list.map((w) => `${ACTIVITY_BY_ID[w.activityId]?.name ?? 'Activity'} ${w.minutes}m`).join(', ') : 'Nothing logged yet'}
-      </Text>
-      <View style={[styles.pillBtn, { backgroundColor: C.workoutSoft }]}>
-        <Icon name="plus" size={16} color={C.workout} />
-        <Text style={{ fontFamily: F.bold, color: C.workout, fontSize: 13 }}>Log workout</Text>
-      </View>
-    </Card>
-  );
-}
-
-function SleepCard({ day, sum }: { day: string; sum: DaySummary }) {
-  const { setSleep } = useStore();
-  const [open, setOpen] = useState(false);
-  const [hrs, setHrs] = useState(sum.sleepHrs ?? 7);
-  const tone = sum.sleepHrs == null ? C.ink3 : sum.sleepHrs >= 7 && sum.sleepHrs <= 9 ? C.good : C.warn;
-  return (
-    <Card style={styles.tracker} onPress={() => (setHrs(sum.sleepHrs ?? 7), setOpen(true))} accessibilityLabel="Sleep">
-      <View style={styles.trackerHead}>
-        <Icon name="power-sleep" size={20} color={C.sleep} />
-        <Text style={T.h3}>Sleep</Text>
-      </View>
-      <Text style={[T.num, { fontSize: 22 }]}>
-        {sum.sleepHrs == null ? '–' : fmt(sum.sleepHrs)}
-        <Text style={[T.small, { fontFamily: F.medium }]}> hrs</Text>
-      </Text>
-      <Text style={[T.tiny, { color: tone }]}>{sum.sleepHrs == null ? 'How did you sleep?' : sum.sleepHrs < 7 ? 'Below the 7 hr minimum' : sum.sleepHrs > 9 ? 'More than usual' : 'In the healthy range'}</Text>
-      <View style={[styles.pillBtn, { backgroundColor: C.sleepSoft }]}>
-        <Icon name="pencil" size={15} color={C.sleep} />
-        <Text style={{ fontFamily: F.bold, color: C.sleep, fontSize: 13 }}>{sum.sleepHrs == null ? 'Log sleep' : 'Edit'}</Text>
-      </View>
-      <Sheet visible={open} onClose={() => setOpen(false)} title="Sleep last night">
-        <Stepper value={hrs} onChange={setHrs} step={0.5} min={0} max={16} format={(v) => `${fmt(v)} hrs`} />
-        <Text style={[T.small, { marginVertical: 12 }]}>Adults do best with 7 to 9 hours. Short sleep tends to raise appetite the next day.</Text>
-        <Button
-          label="Save"
-          onPress={() => {
-            setSleep(day, hrs);
-            setOpen(false);
-          }}
-        />
-        {sum.sleepHrs != null ? (
-          <Button
-            label="Clear"
-            kind="text"
-            onPress={() => {
-              setSleep(day, null);
-              setOpen(false);
-            }}
-          />
-        ) : null}
-      </Sheet>
-    </Card>
-  );
-}
+/* ---------------- weight ---------------- */
 
 function WeightCard() {
   const { state } = useStore();
@@ -409,8 +249,8 @@ function WeightCard() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={T.h3}>Weight</Text>
             <Text style={T.small}>
-              <Text style={{ fontFamily: F.bold, color: C.ink }}>{fmt(latest)} kg</Text>
-              {p.goal === 'maintain' ? '' : ` · goal ${fmt(p.targetKg)} kg`}
+              <Text style={{ fontFamily: F.bold, color: C.ink }}>{fmtKg(latest)} kg</Text>
+              {p.goal === 'maintain' ? '' : ` · goal ${fmtKg(p.targetKg)} kg`}
             </Text>
           </View>
           {p.goal === 'maintain' ? (
@@ -418,7 +258,7 @@ function WeightCard() {
           ) : (
             <>
               <Bar value={Math.max(0, progress)} max={1} color={C.weight} />
-              <Text style={T.tiny}>{Math.abs(toGo) < 0.1 ? 'Goal reached. Nice work.' : `${fmt(Math.abs(toGo))} kg to ${toGo > 0 ? 'lose' : 'gain'}`}</Text>
+              <Text style={T.tiny}>{Math.abs(toGo) < 0.1 ? 'Goal reached. Nice work.' : `${fmtKg(Math.abs(toGo))} kg to ${toGo > 0 ? 'lose' : 'gain'}`}</Text>
             </>
           )}
         </View>
@@ -431,19 +271,17 @@ function WeightCard() {
 /* ---------------- rule-based daily tip ---------------- */
 
 function DailyTip({ sum }: { sum: DaySummary }) {
-  const { state, addWater } = useStore();
-  const toast = useToast();
+  const { state } = useStore();
   const t = sum.targets;
   const h = new Date().getHours();
   const veg = state.profile?.diet === 'veg';
   type Tip = { icon: string; text: string; action: string; go: () => void };
   let tip: Tip;
   if (!sum.rows.length) tip = { icon: 'camera-iris', text: 'Log your first meal of the day. A photo and a few taps is all it takes.', action: 'Log with a photo', go: () => router.push('/snap') };
-  else if (sum.total.kcal > t.kcal + sum.burned) tip = { icon: 'walk', text: `You're ${kcalStr(sum.total.kcal - t.kcal - sum.burned)} kcal over today. A 30-minute brisk walk burns about 150.`, action: 'Log a walk', go: () => router.push('/workout') };
+  else if (sum.total.kcal > t.kcal) tip = { icon: 'food-apple-outline', text: `You're ${kcalStr(sum.total.kcal - t.kcal)} kcal over today. Keep the next meal light: dal, sabzi and salad fill you up for fewer calories.`, action: 'Browse foods', go: () => router.push('/(tabs)/foods') };
   else if (h >= 15 && sum.total.protein < t.protein * 0.5) tip = { icon: 'arm-flex-outline', text: `Protein is at ${Math.round((sum.total.protein / t.protein) * 100)}% of your target. ${veg ? 'A katori of dal or 100 g paneer adds 9–18 g.' : 'Two eggs or 100 g chicken add 13–30 g.'}`, action: 'See protein-rich foods', go: () => router.push('/(tabs)/foods') };
-  else if (h >= 14 && sum.waterMl < sum.waterGoal * 0.4) tip = { icon: 'cup-water', text: 'You’re behind on water. Keep a bottle nearby and sip through the afternoon.', action: `Add a ${state.settings.glassMl} ml glass`, go: () => (addWater(dayKey(), state.settings.glassMl), toast('Glass added.')) };
   else if (h >= 16 && sum.total.fibre < t.fibre * 0.4) tip = { icon: 'sprout', text: 'Fibre is low today. Add salad, sprouts or a fruit to your next meal.', action: 'Browse foods', go: () => router.push('/(tabs)/foods') };
-  else tip = { icon: 'check-decagram-outline', text: `You're on track. ${kcalStr(Math.max(0, t.kcal + sum.burned - sum.total.kcal))} kcal left for the rest of the day.`, action: 'See progress', go: () => router.push('/(tabs)/insights') };
+  else tip = { icon: 'check-decagram-outline', text: `You're on track. ${kcalStr(Math.max(0, t.kcal - sum.total.kcal))} kcal left for the rest of the day.`, action: 'See progress', go: () => router.push('/(tabs)/insights') };
   return (
     <Card style={{ marginTop: 22, backgroundColor: C.coachSoft }} onPress={tip.go} accessibilityLabel={`Tip: ${tip.text}`}>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
@@ -477,10 +315,4 @@ const styles = StyleSheet.create({
   mealIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.brandSoft, alignItems: 'center', justifyContent: 'center' },
   entry: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: C.line2 },
   repeat: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 11, borderTopWidth: 1, borderTopColor: C.line2 },
-  tracker: { flex: 1, gap: 8, minHeight: 176 },
-  trackerHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  glasses: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  glass: { width: 12, height: 18, borderRadius: 3, borderWidth: 1.5, borderColor: C.water, backgroundColor: 'transparent' },
-  addGlass: { flex: 1, height: 36, borderRadius: 18, backgroundColor: C.water, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  pillBtn: { marginTop: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 10, height: 32, borderRadius: 16 },
 });

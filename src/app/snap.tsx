@@ -168,7 +168,7 @@ export default function Snap() {
             <Button label="Gallery" icon="image-outline" kind="onDark" style={{ flex: 1 }} onPress={() => pick('gallery')} disabled={busy} />
             <Button label="Take photo" icon="camera" kind="citrus" style={{ flex: 1.4 }} onPress={() => pick('camera')} loading={busy} />
           </View>
-          <Button label="Packaged food? Scan its barcode" icon="barcode-scan" kind="onDark" onPress={() => router.replace({ pathname: '/barcode', params: { meal } })} />
+          <Button label="Packaged food? Scan its barcode or QR" icon="barcode-scan" kind="onDark" onPress={() => router.replace({ pathname: '/barcode', params: { meal } })} />
           <Button label="Skip the photo, just search" kind="textOnDark" style={{ minHeight: 40 }} onPress={() => router.replace({ pathname: '/log', params: { meal } })} />
         </View>
       )}

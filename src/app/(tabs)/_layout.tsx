@@ -2,7 +2,7 @@ import { Redirect, router } from 'expo-router';
 import { Tabs, type BottomTabBarProps } from 'expo-router/tabs';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Icon, Sheet, tap, useToast } from '@/components/ui';
+import { Icon, Sheet, tap } from '@/components/ui';
 import { dayKey } from '@/lib/dates';
 import { useStore } from '@/lib/store';
 import { mealForNow } from '@/lib/summary';
@@ -83,31 +83,15 @@ function TabBar({ state, navigation, insets }: BottomTabBarProps) {
 }
 
 function QuickAdd({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { addWater, state } = useStore();
-  const toast = useToast();
   const go = (fn: () => void) => {
     onClose();
     setTimeout(fn, 180);
   };
-  const glass = state.settings.glassMl;
   const items: { icon: string; label: string; sub: string; color: string; bg: string; run: () => void }[] = [
     { icon: 'camera-iris', label: 'Snap a meal', sub: 'Photo, then tap foods', color: C.citrusInk, bg: C.citrus, run: () => go(() => router.push('/snap')) },
     { icon: 'magnify', label: 'Log food', sub: `Add to ${mealForNow().toLowerCase()}`, color: C.brand, bg: C.brandSoft, run: () => go(() => router.push({ pathname: '/log', params: { meal: mealForNow(), day: dayKey() } })) },
-    {
-      icon: 'cup-water',
-      label: 'Add a glass',
-      sub: `${glass} ml of water`,
-      color: C.water,
-      bg: C.waterSoft,
-      run: () => {
-        addWater(dayKey(), glass);
-        onClose();
-        toast(`Added ${glass} ml of water.`, { label: 'Undo', run: () => addWater(dayKey(), -glass) });
-      },
-    },
-    { icon: 'run', label: 'Workout', sub: 'Log exercise', color: C.workout, bg: C.workoutSoft, run: () => go(() => router.push('/workout')) },
+    { icon: 'barcode-scan', label: 'Scan code', sub: 'Barcode or QR on a pack', color: C.coach, bg: C.coachSoft, run: () => go(() => router.push({ pathname: '/barcode', params: { meal: mealForNow(), day: dayKey() } })) },
     { icon: 'scale-bathroom', label: 'Weight', sub: 'Log today’s weight', color: C.weight, bg: C.weightSoft, run: () => go(() => router.push('/weight')) },
-    { icon: 'barcode-scan', label: 'Scan barcode', sub: 'Packaged foods', color: C.coach, bg: C.coachSoft, run: () => go(() => router.push({ pathname: '/barcode', params: { meal: mealForNow(), day: dayKey() } })) },
   ];
   return (
     <Sheet visible={visible} onClose={onClose} title="Track">
@@ -132,6 +116,6 @@ const styles = StyleSheet.create({
   tabText: { fontFamily: F.semi, fontSize: 11.5, color: C.ink3 },
   fab: { width: 58, height: 58, borderRadius: 20, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center', marginTop: -26, borderWidth: 4, borderColor: C.bg },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, marginBottom: 8 },
-  qa: { width: '31.5%', backgroundColor: C.card, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center', gap: 4 },
+  qa: { width: '48.5%', backgroundColor: C.card, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center', gap: 4 },
   qaIcon: { width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
 });
