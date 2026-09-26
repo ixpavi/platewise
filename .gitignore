@@ -13,6 +13,9 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
+signing.cmd
+signing/
 *.p8
 *.p12
 *.key
@@ -43,3 +46,6 @@ yarn-error.*
 
 # Firebase keys
 .env
+
+# Downloaded food datasets (scripts/foods/build_foods.py)
+.food-cache/

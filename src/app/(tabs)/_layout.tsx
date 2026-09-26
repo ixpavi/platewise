@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon, Sheet, tap } from '@/components/ui';
 import { dayKey } from '@/lib/dates';
 import { useStore } from '@/lib/store';
-import { mealForNow } from '@/lib/summary';
+import { useMeals } from '@/lib/summary';
 import { C, F, T } from '@/theme';
 
 const TAB_META: Record<string, { label: string; icon: string; iconOn: string }> = {
@@ -83,14 +83,15 @@ function TabBar({ state, navigation, insets }: BottomTabBarProps) {
 }
 
 function QuickAdd({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const mealNow = useMeals().now;
   const go = (fn: () => void) => {
     onClose();
     setTimeout(fn, 180);
   };
   const items: { icon: string; label: string; sub: string; color: string; bg: string; run: () => void }[] = [
     { icon: 'camera-iris', label: 'Snap a meal', sub: 'Photo, then tap foods', color: C.citrusInk, bg: C.citrus, run: () => go(() => router.push('/snap')) },
-    { icon: 'magnify', label: 'Log food', sub: `Add to ${mealForNow().toLowerCase()}`, color: C.brand, bg: C.brandSoft, run: () => go(() => router.push({ pathname: '/log', params: { meal: mealForNow(), day: dayKey() } })) },
-    { icon: 'barcode-scan', label: 'Scan code', sub: 'Barcode or QR on a pack', color: C.coach, bg: C.coachSoft, run: () => go(() => router.push({ pathname: '/barcode', params: { meal: mealForNow(), day: dayKey() } })) },
+    { icon: 'magnify', label: 'Log food', sub: `Add to ${mealNow.toLowerCase()}`, color: C.brand, bg: C.brandSoft, run: () => go(() => router.push({ pathname: '/log', params: { meal: mealNow, day: dayKey() } })) },
+    { icon: 'barcode-scan', label: 'Scan code', sub: 'Barcode or QR on a pack', color: C.coach, bg: C.coachSoft, run: () => go(() => router.push({ pathname: '/barcode', params: { meal: mealNow, day: dayKey() } })) },
     { icon: 'scale-bathroom', label: 'Weight', sub: 'Log today’s weight', color: C.weight, bg: C.weightSoft, run: () => go(() => router.push('/weight')) },
   ];
   return (

@@ -6,17 +6,15 @@ import { PhotoStrip, PhotoViewer } from '@/components/photos';
 import { addDays, dayKey, fromKey, greeting, isToday, lastNDays, relativeDay, weekdayShort } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
 import { fmt, fmtKg, kcalStr } from '@/lib/nutrition';
-import { MEALS, useStore, type Meal } from '@/lib/store';
-import { mealForNow, useDaySummary, type DaySummary } from '@/lib/summary';
+import { MEAL_INFO, MEALS, useStore, type Meal } from '@/lib/store';
+import { mealShare, useDaySummary, useMeals, type DaySummary } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
-
-const MEAL_SHARE: Record<Meal, number> = { Breakfast: 0.25, 'Morning snack': 0.1, Lunch: 0.3, 'Evening snack': 0.1, Dinner: 0.25 };
-const MEAL_ICON: Record<Meal, string> = { Breakfast: 'coffee-outline', 'Morning snack': 'food-apple-outline', Lunch: 'silverware-fork-knife', 'Evening snack': 'cookie-outline', Dinner: 'weather-night' };
 
 export default function Home() {
   const { state, day } = useStore();
   const [selected, setSelected] = useState(dayKey());
   const sum = useDaySummary(selected);
+  const myMeals = useMeals();
   const first = (state.profile?.name || state.account?.name || 'there').split(' ')[0];
 
   const streak = useMemo(() => {
@@ -58,7 +56,7 @@ export default function Home() {
           <View style={styles.snapRing} />
           <View style={{ flex: 1 }}>
             <Text style={[T.label, { color: C.citrusInk, opacity: 0.6 }]}>Snap</Text>
-            <Text style={{ fontFamily: F.display, fontSize: 21, color: C.citrusInk, letterSpacing: -0.4 }}>Snap your {mealForNow().toLowerCase()}</Text>
+            <Text style={{ fontFamily: F.display, fontSize: 21, color: C.citrusInk, letterSpacing: -0.4 }}>Snap your {myMeals.now.toLowerCase()}</Text>
             <Text style={[T.small, { color: C.citrusInk, opacity: 0.75 }]}>Photo your plate, tap the foods, done.</Text>
           </View>
           <View style={styles.snapBtn}>
@@ -71,7 +69,7 @@ export default function Home() {
 
       <Section title="Meals">
         <View style={{ gap: 10 }}>
-          {MEALS.map((m) => (
+          {MEALS.filter((m) => myMeals.meals.includes(m) || sum.byMeal[m].rows.length).map((m) => (
             <MealCard key={m} meal={m} day={selected} sum={sum} />
           ))}
         </View>
@@ -157,10 +155,10 @@ function MacroBar({ label, v, t, color }: { label: string; v: number; t: number;
 /* ---------------- meals ---------------- */
 
 function MealCard({ meal, day, sum }: { meal: Meal; day: string; sum: DaySummary }) {
-  const { removeEntry, restoreEntries, addEntries, day: getDay, food } = useStore();
+  const { state, removeEntry, restoreEntries, addEntries, day: getDay, food } = useStore();
   const toast = useToast();
   const m = sum.byMeal[meal];
-  const target = Math.round((sum.targets.kcal * MEAL_SHARE[meal]) / 10) * 10;
+  const target = Math.round((sum.targets.kcal * mealShare(meal, state.settings.meals)) / 10) * 10;
   const yesterday = getDay(addDays(day, -1)).food.filter((e) => e.meal === meal && food(e.foodId));
   const photos = Array.from(new Set(m.rows.map((r) => r.photo).filter((p): p is string => !!p)));
   const [viewing, setViewing] = useState<string | null>(null);
@@ -180,7 +178,7 @@ function MealCard({ meal, day, sum }: { meal: Meal; day: string; sum: DaySummary
     <Card style={{ padding: 0, overflow: 'hidden' }}>
       <View style={styles.mealHead}>
         <View style={styles.mealIcon}>
-          <Icon name={MEAL_ICON[meal]} size={20} color={C.brand} />
+          <Icon name={MEAL_INFO[meal].icon} size={20} color={C.brand} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={T.h3}>{meal}</Text>

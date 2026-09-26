@@ -17,9 +17,10 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 function Gate() {
   const { hydrated, state } = useStore();
   // Reminders live in settings (and sync across phones): schedule them on this device too.
-  const remindersKey = JSON.stringify(state.settings.reminders);
+  const remindersKey = JSON.stringify([state.settings.reminders, state.settings.meals]);
   useEffect(() => {
-    if (hydrated && state.loggedIn) restoreReminders(JSON.parse(remindersKey)).catch(() => {});
+    const [r, meals] = JSON.parse(remindersKey);
+    if (hydrated && state.loggedIn) restoreReminders(r, meals).catch(() => {});
   }, [hydrated, state.loggedIn, remindersKey]);
   const [fontsLoaded, fontError] = useFonts({
     BricolageGrotesque_700Bold,

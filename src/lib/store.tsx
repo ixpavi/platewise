@@ -5,8 +5,26 @@ import { addDays, dayKey } from './dates';
 import type { Profile } from './nutrition';
 import { DEFAULT_REMINDERS, type Reminders } from './reminders';
 
-export const MEALS = ['Breakfast', 'Morning snack', 'Lunch', 'Evening snack', 'Dinner'] as const;
+/** Every meal the app knows, in the order of a day. People pick the ones they actually eat. */
+export const MEALS = ['Breakfast', 'Morning snack', 'Brunch', 'Lunch', 'Evening snack', 'Dinner', 'Late-night snack'] as const;
 export type Meal = (typeof MEALS)[number];
+/** Typical hour, relative share of the day's calories, and icon for each meal. */
+export const MEAL_INFO: Record<Meal, { hour: number; weight: number; icon: string }> = {
+  Breakfast: { hour: 9, weight: 25, icon: 'coffee-outline' },
+  'Morning snack': { hour: 11, weight: 10, icon: 'food-apple-outline' },
+  Brunch: { hour: 11.75, weight: 40, icon: 'food-croissant' },
+  Lunch: { hour: 13.5, weight: 30, icon: 'silverware-fork-knife' },
+  'Evening snack': { hour: 17.5, weight: 10, icon: 'cookie-outline' },
+  Dinner: { hour: 20.5, weight: 25, icon: 'weather-night' },
+  'Late-night snack': { hour: 23.5, weight: 5, icon: 'moon-waning-crescent' },
+};
+export const DEFAULT_MEALS: Meal[] = ['Breakfast', 'Morning snack', 'Lunch', 'Evening snack', 'Dinner'];
+export const MEAL_PRESETS: { id: string; title: string; body: string; icon: string; meals: Meal[] }[] = [
+  { id: 'five', title: '3 meals and 2 snacks', body: 'Breakfast, lunch, dinner and snacks in between', icon: 'silverware-fork-knife', meals: DEFAULT_MEALS },
+  { id: 'three', title: '3 meals', body: 'Breakfast, lunch and dinner', icon: 'silverware', meals: ['Breakfast', 'Lunch', 'Dinner'] },
+  { id: 'two', title: '2 meals', body: 'Brunch and dinner', icon: 'food-croissant', meals: ['Brunch', 'Dinner'] },
+  { id: 'two-snack', title: '2 meals and a snack', body: 'Brunch, an evening snack and dinner', icon: 'cookie-outline', meals: ['Brunch', 'Evening snack', 'Dinner'] },
+];
 
 export type Entry = {
   id: string;
@@ -21,7 +39,7 @@ export type Entry = {
 };
 export type Workout = { id: string; activityId: string; minutes: number; kcal: number; t: number };
 export type DayLog = { food: Entry[]; waterMl: number; steps: number; sleepHrs: number | null; workouts: Workout[] };
-export type Settings = { waterGoalMl: number | null; stepGoal: number; calorieOverride: number | null; glassMl: number; reminders: Reminders };
+export type Settings = { waterGoalMl: number | null; stepGoal: number; calorieOverride: number | null; glassMl: number; reminders: Reminders; meals: Meal[] };
 
 export type Account = {
   /** local = this phone only; password / google = Firebase account that syncs. */
@@ -55,13 +73,20 @@ const INITIAL: State = {
   account: null,
   loggedIn: false,
   profile: null,
-  settings: { waterGoalMl: null, stepGoal: 8000, calorieOverride: null, glassMl: 250, reminders: DEFAULT_REMINDERS },
+  settings: { waterGoalMl: null, stepGoal: 8000, calorieOverride: null, glassMl: 250, reminders: DEFAULT_REMINDERS, meals: DEFAULT_MEALS },
   days: {},
   weights: [],
   custom: {},
   favs: [],
   recents: [],
 };
+/** Settings saved by any app version or synced from another phone: fill new fields, drop unknown meals. */
+export function normalizeSettings(s: Partial<Settings> | undefined): Settings {
+  const merged = { ...INITIAL.settings, ...(s ?? {}) };
+  const meals = Array.isArray(merged.meals) ? MEALS.filter((m) => merged.meals.includes(m)) : [];
+  return { ...merged, meals: meals.length ? meals : DEFAULT_MEALS, reminders: { ...DEFAULT_REMINDERS, ...(merged.reminders ?? {}) } };
+}
+
 const STORAGE_KEY = 'platewise:v1';
 const SYNC_KEY = 'platewise:sync';
 
@@ -130,7 +155,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const saved = JSON.parse(raw) as Partial<State>;
           // Accounts saved before cloud sync existed are phone-only accounts.
           const account: Account | null = saved.account ? { ...saved.account, provider: saved.account.provider ?? 'local' } : null;
-          const next = { ...INITIAL, ...saved, account, settings: { ...INITIAL.settings, ...(saved.settings ?? {}) } };
+          const next = { ...INITIAL, ...saved, account, settings: normalizeSettings(saved.settings) };
           prevRef.current = next;
           setState(next);
         }
@@ -357,7 +382,7 @@ function sampleData(s: State): Partial<State> {
     [['Breakfast', 'upma', 'bowl', 1], ['Breakfast', 'filter-coffee', 'cup', 1], ['Lunch', 'rice', 'katori', 1], ['Lunch', 'fish-curry', 'katori', 1], ['Evening snack', 'gulab-jamun', 'piece', 2], ['Dinner', 'chapati', 'roti', 2], ['Dinner', 'mix-veg', 'katori', 1]],
     [['Breakfast', 'thepla', 'piece', 2], ['Breakfast', 'chai', 'cup', 1], ['Lunch', 'pizza', 'slice', 3], ['Evening snack', 'cola', 'can', 1], ['Dinner', 'khichdi', 'katori', 1], ['Dinner', 'raita', 'katori', 1]],
   ];
-  const hours: Record<Meal, number> = { Breakfast: 8, 'Morning snack': 11, Lunch: 13, 'Evening snack': 17, Dinner: 20 };
+  const hours: Record<Meal, number> = { Breakfast: 8, 'Morning snack': 11, Brunch: 11.5, Lunch: 13, 'Evening snack': 17, Dinner: 20, 'Late-night snack': 23 };
   const days = { ...s.days };
   plan.forEach((items, i) => {
     const key = addDays(today, -(i + 1));

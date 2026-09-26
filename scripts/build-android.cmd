@@ -3,15 +3,19 @@ setlocal
 rem Builds an installable Android APK on Windows.
 rem
 rem   Usage (from the project folder):  scripts\build-android.cmd
-rem   Output: <BUILD_DIR>\android\app\build\outputs\apk\release\app-release.apk
+rem   Output: <BUILD_DIR>\Platewise.apk when signed with your own key (see below),
+rem           otherwise <BUILD_DIR>\android\app\build\outputs\apk\release\app-release.apk
 rem
 rem Android's native build fails when the project path contains spaces, so this copies the project
 rem to BUILD_DIR (default C:\platewise-build, a build-only copy you can delete any time) and builds
 rem there. Optional settings, set them before running:
-rem   BUILD_DIR     another folder without spaces
-rem   ABIS          CPU types to build for (default arm64-v8a,x86_64; add armeabi-v7a for old 32-bit phones)
-rem   ANDROID_HOME  Android SDK location (default: where Android Studio installs it)
-rem   JAVA_HOME     a JDK 17 (default: Temurin 17, then Android Studio's bundled JDK)
+rem   BUILD_DIR          another folder without spaces
+rem   ABIS               CPU types to build for (default arm64-v8a,x86_64; add armeabi-v7a for old 32-bit phones)
+rem   ANDROID_HOME       Android SDK location (default: where Android Studio installs it)
+rem   JAVA_HOME          a JDK 17 (default: Temurin 17, then Android Studio's bundled JDK)
+rem   PLATEWISE_SIGNING  a .cmd file that sets PLATEWISE_KEYSTORE, PLATEWISE_KEY_ALIAS and
+rem                      PLATEWISE_KEYSTORE_PASSWORD for your release key (default: ..\signing\signing.cmd
+rem                      next to the project folder, if it exists). Keep it out of git.
 
 set "SRC=%~dp0.."
 for %%I in ("%SRC%") do set "SRC=%%~fI"
@@ -66,6 +70,29 @@ if errorlevel 1 (
   echo Build failed. See the error above.
   exit /b 1
 )
+set "APK=%BUILD_DIR%\android\app\build\outputs\apk\release\app-release.apk"
 
+rem Gradle signs with React Native's shared debug key, which is public: fine for testing, not for
+rem sharing. With a release key set up, re-sign the APK with it.
+if not defined PLATEWISE_SIGNING if exist "%SRC%\..\signing\signing.cmd" set "PLATEWISE_SIGNING=%SRC%\..\signing\signing.cmd"
+if not defined PLATEWISE_SIGNING goto unsigned
+call "%PLATEWISE_SIGNING%"
+set "BUILD_TOOLS="
+for /d %%B in ("%ANDROID_HOME%\build-tools\*") do set "BUILD_TOOLS=%%~fB"
+if not exist "%BUILD_TOOLS%\apksigner.bat" (
+  echo apksigner not found. Install "Android SDK Build-Tools" in Android Studio's SDK Manager.
+  exit /b 1
+)
+set "SIGNED=%BUILD_DIR%\Platewise.apk"
+call "%BUILD_TOOLS%\apksigner.bat" sign --ks "%PLATEWISE_KEYSTORE%" --ks-key-alias "%PLATEWISE_KEY_ALIAS%" --ks-pass env:PLATEWISE_KEYSTORE_PASSWORD --out "%SIGNED%" "%APK%"
+if errorlevel 1 (
+  echo Signing failed. Check the settings in "%PLATEWISE_SIGNING%".
+  exit /b 1
+)
 echo.
-echo Done. APK: %BUILD_DIR%\android\app\build\outputs\apk\release\app-release.apk
+echo Done. Signed with your release key: %SIGNED%
+exit /b 0
+
+:unsigned
+echo.
+echo Done. APK (debug key, for testing only): %APK%

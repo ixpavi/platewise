@@ -1,10 +1,12 @@
 // Local reminders (scheduled on the phone, no server). Work in Expo Go and in the APK.
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { reminderMeals } from './meal-reminders';
 
 export type Reminders = {
   meals: boolean;
   breakfast: string; // "HH:MM"
+  brunch: string;
   lunch: string;
   dinner: string;
 };
@@ -12,6 +14,7 @@ export type Reminders = {
 export const DEFAULT_REMINDERS: Reminders = {
   meals: false,
   breakfast: '09:00',
+  brunch: '11:30',
   lunch: '13:30',
   dinner: '20:30',
 };
@@ -41,25 +44,24 @@ const hm = (s: string) => {
   return { hour: Math.min(23, Math.max(0, h || 0)), minute: Math.min(59, Math.max(0, m || 0)) };
 };
 
-/** Replaces all scheduled reminders with the given settings. Returns how many were scheduled. */
-export async function applyReminders(r: Reminders): Promise<number> {
+/** Replaces all scheduled reminders: one a day for each main meal someone eats. Returns how many were scheduled. */
+export async function applyReminders(r: Reminders, meals: readonly string[] = ['Breakfast', 'Lunch', 'Dinner']): Promise<number> {
   await Notifications.cancelAllScheduledNotificationsAsync();
   if (!r.meals) return 0;
   const daily = (hhmm: string) => ({ type: Notifications.SchedulableTriggerInputTypes.DAILY, ...hm(hhmm), channelId: CHANNEL }) as const;
-  const jobs: Notifications.NotificationRequestInput[] = [
-    { content: { title: 'Log your breakfast', body: 'A photo and two taps keeps your day on track.' }, trigger: daily(r.breakfast) },
-    { content: { title: 'Lunch time?', body: 'Log lunch while you still remember the portions.' }, trigger: daily(r.lunch) },
-    { content: { title: 'Log your dinner', body: 'See how your day added up.' }, trigger: daily(r.dinner) },
-  ];
+  const jobs: Notifications.NotificationRequestInput[] = reminderMeals(meals).map((m) => ({
+    content: { title: m.title, body: m.body },
+    trigger: daily(r[m.key] ?? DEFAULT_REMINDERS[m.key]),
+  }));
   for (const j of jobs) await Notifications.scheduleNotificationAsync(j);
   return jobs.length;
 }
 
 /** On app start: re-schedule saved reminders, but only if permission was already given (never prompts). */
-export async function restoreReminders(r: Reminders) {
+export async function restoreReminders(r: Reminders, meals?: readonly string[]) {
   if (!r.meals) return;
   const perm = await Notifications.getPermissionsAsync();
-  if (perm.granted) await applyReminders(r);
+  if (perm.granted) await applyReminders(r, meals);
 }
 
 export async function testReminder() {

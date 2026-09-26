@@ -1,9 +1,10 @@
 # Platewise
 
 A food calorie counter built for Indian home food. Scan the barcode or QR code on a packet,
-search 139 everyday dishes with portions in katoris, rotis and pieces, or snap your plate and tap
-what's on it. Cooked it yourself? Weigh your portion and type the exact grams. A simple weight
-log shows how you're moving towards your goal.
+search over 6,000 Indian and international foods with portions in katoris, rotis and pieces, or
+snap your plate and tap what's on it. Cooked it yourself? Weigh your portion and type the exact
+grams. Eat twice a day? Pick your own meals, like brunch and dinner. A simple weight log shows
+how you're moving towards your goal.
 
 Built with Expo (React Native). Runs on **Android**, **iOS** and in a **web browser**. Works fully
 offline with no account, and can optionally sync to your own free Firebase project.
@@ -11,6 +12,7 @@ offline with no account, and can optionally sync to your own free Firebase proje
 <p>
   <img src="docs/screenshots/welcome.jpg" width="180" alt="Welcome screen" />
   <img src="docs/screenshots/plan.jpg" width="180" alt="Daily calorie plan" />
+  <img src="docs/screenshots/meals.jpg" width="180" alt="Choosing your meals" />
   <img src="docs/screenshots/home.jpg" width="180" alt="Home screen" />
   <img src="docs/screenshots/food.jpg" width="180" alt="Adding a food" />
   <img src="docs/screenshots/barcode.jpg" width="180" alt="Scanned packaged food" />
@@ -37,10 +39,11 @@ offline with no account, and can optionally sync to your own free Firebase proje
 
 | Area | What you get |
 | --- | --- |
-| Onboarding | 7 short steps: goal, age, height, weight, target, activity, diet. Builds a daily calorie budget with the Mifflin–St Jeor equation and never goes below a safe minimum. |
+| Onboarding | 8 short steps: goal, age, height, weight, target, activity, diet, meals. Builds a daily calorie budget with the Mifflin–St Jeor equation and never goes below a safe minimum. |
+| Your meals | Pick the meals you actually eat: 3 meals and 2 snacks, 3 meals, brunch and dinner, or any mix (breakfast, brunch, lunch, snacks, dinner, late-night snack). Home, the budget split and reminders follow your choice. |
 | Home | Week strip, calorie ring (eaten, budget, left), carbs / protein / fat / fibre bars, five meals, weight, daily tip. |
 | Barcode and QR scanner | Scan an EAN / UPC barcode, or the GS1 QR code on newer packs (or type the digits), to look up a packaged food on Open Food Facts. |
-| Food search | 139 Indian and everyday foods, typo-tolerant search, Hindi names, favourites, custom foods from a label or recipe, health score. |
+| Food search | Over 6,000 foods: 139 hand-picked everyday foods, about 900 Indian recipes (INDB) and about 5,000 international foods as eaten (USDA). Typo-tolerant search, Hindi names, veg / egg / non-veg marks, favourites, custom foods from a label or recipe, health score. |
 | Portions | Household units (katori, roti, piece, cup) or the exact weight in grams or ml. Calories update as you type. |
 | Snap a meal | Take or pick a photo, tap the foods on the plate (suggestions come from what you usually eat at that meal), adjust portions, log. The photo is saved with the meal. |
 | Weight | A simple weight log with progress towards your goal and a trend chart. |
@@ -106,8 +109,8 @@ npx expo start --tunnel
 
 1. Tap **Get started**.
 2. Tap **Use without an account (this phone only)**, enter a name, email and password. Nothing leaves the phone.
-3. Answer the 7 onboarding questions to get your calorie plan.
-4. Want to see the charts filled in? Go to **Me → Budget and reminders → Load a sample week**.
+3. Answer the 8 onboarding questions to get your calorie plan.
+4. Want to see the charts filled in? Go to **Me → Meals, budget and reminders → Load a sample week**.
 
 Everything works in this mode except cloud sync and Google sign-in, which need the optional
 Firebase setup below. The barcode scanner needs an internet connection.
@@ -341,13 +344,52 @@ The APK is at `android/app/build/outputs/apk/release/app-release.apk`.
   [EAS environment variables](https://docs.expo.dev/eas/environment-variables/), because `.env`
   isn't uploaded.
 
+### Sign it with your own key (before you share it)
+
+Out of the box the APK is signed with React Native's standard debug key. That key is public, so
+Android's Play Protect trusts it less, and anyone could sign a fake "update" with it. Before you
+share the app or use it every day, sign it with a private key of your own. It takes two minutes:
+
+1. Next to the project folder (not inside it, so it never ends up in git), create a folder called
+   `signing`, open a terminal there and create a key. `keytool` comes with the JDK:
+
+   ```bat
+   keytool -genkeypair -keystore platewise-release.jks -storetype PKCS12 -alias platewise -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Platewise"
+   ```
+
+   It asks for a password. Pick a long one and remember it.
+2. In the same folder, create `signing.cmd` with this content (use your password):
+
+   ```bat
+   @echo off
+   set "PLATEWISE_KEYSTORE=%~dp0platewise-release.jks"
+   set "PLATEWISE_KEY_ALIAS=platewise"
+   set "PLATEWISE_KEYSTORE_PASSWORD=your-password-here"
+   ```
+
+3. Run `scripts\build-android.cmd` as usual. It finds `..\signing\signing.cmd` and writes a signed
+   `Platewise.apk` to the build folder. (To keep the files somewhere else, set
+   `PLATEWISE_SIGNING` to the full path of your `signing.cmd` before building.)
+4. Print the key's fingerprints and add both to Firebase (**Project settings → Your apps → your
+   Android app → Add fingerprint**), or Google sign-in won't work in the signed app:
+
+   ```bat
+   keytool -list -v -keystore platewise-release.jks -alias platewise
+   ```
+
+Back the `signing` folder up somewhere private. Without it you can't install updates over the
+installed app. An app signed with a different key can't replace it, so switching keys means
+uninstalling first. Your logs come back if you use a cloud account.
+
+WhatsApp and Play Protect still warn about any app that isn't from the Play Store ("This file
+might be harmful", "App scan recommended"). That's expected. Tap **Scan app** and Google checks
+it before installing.
+
 ### Before publishing on the Play Store
 
-The APK above is signed with React Native's standard debug key, which is fine for testing and
-sharing with friends but not for the Play Store. For a store release, create your own upload key
-and build an app bundle (`./gradlew bundleRelease`); the
-[React Native guide](https://reactnative.dev/docs/signed-apk-android) walks through it. Add the new
-key's SHA-1 and SHA-256 to Firebase, or Google sign-in will stop working in that build.
+The Play Store needs an app bundle rather than an APK (`./gradlew bundleRelease`), signed with an
+upload key. The [React Native guide](https://reactnative.dev/docs/signed-apk-android) walks
+through it. Add that key's SHA-1 and SHA-256 to Firebase too.
 
 ## Run on an Android emulator
 
@@ -383,9 +425,9 @@ platewise/
 │   │   ├── barcode.tsx      Barcode and QR scanner
 │   │   ├── food/[id].tsx    Food detail and portion picker
 │   │   ├── weight.tsx       Weight log
-│   │   └── settings.tsx     Calorie budget and reminders
+│   │   └── settings.tsx     Your meals, calorie budget and reminders
 │   ├── components/          Shared UI kit (buttons, cards, sheets, charts)
-│   ├── data/                Food database
+│   ├── data/                Food database: foods.ts (curated) and foods-extra.json (open datasets)
 │   └── lib/                 App logic
 │       ├── store.tsx        App state, saved on the device
 │       ├── sync.tsx         Firestore sync
@@ -396,7 +438,7 @@ platewise/
 │       └── *.web.ts         Browser versions of phone-only features
 ├── assets/                  App icon and splash screen
 ├── docs/screenshots/        Images used in this README
-├── scripts/                 Windows APK build script
+├── scripts/                 Windows APK build script, foods/build_foods.py (food dataset builder)
 ├── app.json, app.config.ts  App name, package name, permissions, plugins
 ├── firestore.rules          Database security rules
 └── .env.example             Template for your Firebase settings
@@ -430,11 +472,35 @@ platewise/
 
 ## Food data
 
-Built-in values are approximate figures per 100 g (or 100 ml) from IFCT 2017 (Indian Food
-Composition Tables) and USDA FoodData Central, for dishes as commonly cooked at home. Packaged
-food data comes from [Open Food Facts](https://world.openfoodfacts.org), an open database
-available under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/),
-and can contain mistakes, so check it against the pack.
+All values are per 100 g (or 100 ml for drinks). The food screen says where each food's values
+come from.
+
+| Source | What | Licence |
+| --- | --- | --- |
+| Platewise's own list (`src/data/foods.ts`) | 139 everyday Indian and common foods with household portions, from IFCT 2017 (Indian Food Composition Tables) and USDA figures for dishes as commonly cooked at home. Shown first in search. | MIT, like the app |
+| [Indian Nutrient Databank (INDB)](https://github.com/lindsayjaacks/Indian-Nutrient-Databank-INDB-) | About 900 Indian recipes with serving sizes. Vijayakumar A, et al. *Development of an Indian Food Composition Database.* Current Developments in Nutrition, 2024. | The paper is published under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) and states that its data files are freely available. The data repository itself has no licence file. |
+| [USDA FoodData Central](https://fdc.nal.usda.gov) (FNDDS 2021–2023, survey foods) | About 5,200 foods as eaten, including international dishes, fast food and drinks, with household portions. | Public domain (CC0) |
+| [Open Food Facts](https://world.openfoodfacts.org) | Packaged foods found by barcode or QR code, fetched when you scan. | [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/) |
+
+Notes on the open datasets:
+
+- Veg, egg and non-veg marks are worked out from each dish's ingredient list (any meat, fish,
+  gelatin or egg ingredient counts), not only from its name. Check the ingredients if it matters
+  to you.
+- INDB counts all the oil used for frying as eaten, so fried recipes can read far too high (poori
+  at 738 kcal per 100 g). Entries above 45 g fat or 620 kcal per 100 g are left out; the app's own
+  list covers those foods with realistic values.
+- Open Food Facts data is entered by volunteers and can contain mistakes, so check it against the
+  pack.
+
+To rebuild the dataset (for example after a new USDA release):
+
+```bash
+python -m pip install pandas openpyxl
+python scripts/foods/build_foods.py
+```
+
+It downloads the sources into `.food-cache/` and writes `src/data/foods-extra.json`.
 
 Platewise gives estimates, not medical advice. Talk to a doctor or dietitian before changing
 your diet, especially if you are under 18, pregnant or have a health condition.
@@ -463,7 +529,7 @@ grams, or `null` to fall back to tagging) and swap it in. The screens don't need
 | `JAVA_HOME is set to an invalid directory` | Point `JAVA_HOME` to a JDK 17 folder (the one that contains `bin\java.exe`), or unset it and let the script find one. |
 | `SDK location not found` | Set `ANDROID_HOME` to your Android SDK folder, or create `android/local.properties` with `sdk.dir=/path/to/sdk`. |
 | Build says licences are not accepted | Run `sdkmanager --licenses` (see the one-time setup). |
-| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Me → Budget and reminders**. Some phones also need battery optimisation turned off for the app. |
+| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Me → Meals, budget and reminders**. Some phones also need battery optimisation turned off for the app. |
 | Scanning a QR code says it has no product details | Many QR codes on packs only link to a website. Scan the barcode (the black bars) instead. |
 
 ## Contributing

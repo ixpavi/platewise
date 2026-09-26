@@ -2,6 +2,7 @@
 export type Reminders = {
   meals: boolean;
   breakfast: string;
+  brunch: string;
   lunch: string;
   dinner: string;
 };
@@ -9,6 +10,7 @@ export type Reminders = {
 export const DEFAULT_REMINDERS: Reminders = {
   meals: false,
   breakfast: '09:00',
+  brunch: '11:30',
   lunch: '13:30',
   dinner: '20:30',
 };

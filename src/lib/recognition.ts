@@ -35,6 +35,8 @@ const MEAL_STAPLES: Record<Meal, string[]> = {
   Lunch: ['rice', 'chapati', 'dal', 'mix-veg', 'curd', 'rajma', 'chole', 'salad', 'chicken-curry', 'raita'],
   'Evening snack': ['chai', 'biscuit', 'samosa', 'roasted-chana', 'bhel-puri', 'makhana', 'apple', 'filter-coffee'],
   Dinner: ['chapati', 'dal', 'rice', 'mix-veg', 'palak-paneer', 'khichdi', 'curd', 'salad', 'chicken-curry', 'aloo-gobi'],
+  Brunch: ['aloo-paratha', 'poha', 'chole', 'masala-dosa', 'rajma', 'rice', 'chapati', 'dal', 'curd', 'boiled-egg', 'chai'],
+  'Late-night snack': ['milk', 'banana', 'biscuit', 'makhana', 'almonds', 'roasted-chana', 'apple', 'chai'],
 };
 
 /**

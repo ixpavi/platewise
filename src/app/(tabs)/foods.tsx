@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Chip, DietMark, Empty, FoodIcon, Icon, ScoreBadge } from '@/components/ui';
-import { CATEGORY_TINT, FOODS, type Category, type Food } from '@/data/foods';
+import { ALL_FOODS, CATEGORY_TINT, defaultPortion, type Category, type Food } from '@/data/foods';
 import { healthScore, kcalStr, scale } from '@/lib/nutrition';
 import { searchFoods } from '@/lib/search';
 import { useStore } from '@/lib/store';
@@ -25,7 +25,7 @@ export default function Foods() {
   const [sort, setSort] = useState<Sort>('Name');
   const [vegOnly, setVegOnly] = useState(state.profile?.diet === 'veg');
 
-  const all = useMemo(() => [...FOODS, ...Object.values(state.custom)], [state.custom]);
+  const all = useMemo(() => [...Object.values(state.custom), ...ALL_FOODS], [state.custom]);
   const list = useMemo(() => {
     let pool: Food[] = filter === 'All' ? all : filter === 'Favourites' ? all.filter((f) => state.favs.includes(f.id)) : all.filter((f) => f.cat === filter);
     if (vegOnly) pool = pool.filter((f) => f.diet === 'veg');
@@ -33,16 +33,16 @@ export default function Foods() {
     if (q.trim()) return found;
     const key: Record<Sort, (f: Food) => number | string> = {
       Name: (f) => f.name,
-      Calories: (f) => -scale(f, f.units[0].grams).kcal,
+      Calories: (f) => -scale(f, defaultPortion(f).grams).kcal,
       Protein: (f) => -(f.n.protein / Math.max(f.n.kcal, 1)),
       Health: (f) => -healthScore(f),
     };
+    // Work out each food's sort value once: with thousands of foods, doing it per comparison is slow.
     const k = key[sort];
-    return [...found].sort((a, b) => {
-      const x = k(a);
-      const y = k(b);
-      return typeof x === 'string' ? x.localeCompare(y as string) : (x as number) - (y as number);
-    });
+    return found
+      .map((f) => ({ f, v: k(f) }))
+      .sort((a, b) => (typeof a.v === 'string' ? a.v.localeCompare(b.v as string) : (a.v as number) - (b.v as number)))
+      .map((x) => x.f);
   }, [all, filter, q, sort, state.favs, vegOnly]);
 
   const header = (
@@ -105,12 +105,12 @@ export default function Foods() {
           )
         }
         renderItem={({ item: f }) => {
-          const u = f.units[0];
-          const n = scale(f, u.grams);
+          const p = defaultPortion(f);
+          const n = scale(f, p.grams);
           const fav = state.favs.includes(f.id);
           return (
             <View style={styles.row}>
-              <Pressable onPress={() => router.push({ pathname: '/food/[id]', params: { id: f.id } })} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${f.name}, ${kcalStr(n.kcal)} kcal per ${u.label}`}>
+              <Pressable onPress={() => router.push({ pathname: '/food/[id]', params: { id: f.id } })} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${f.name}, ${kcalStr(n.kcal)} kcal per ${p.label}`}>
               <FoodIcon food={f} size={46} />
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -120,7 +120,7 @@ export default function Foods() {
                   </Text>
                 </View>
                 <Text style={T.small}>
-                  {kcalStr(n.kcal)} kcal · 1 {u.label} · P {Math.round(n.protein)} g
+                  {kcalStr(n.kcal)} kcal · {p.label} · P {Math.round(n.protein)} g
                 </Text>
               </View>
               </Pressable>

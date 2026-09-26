@@ -1,14 +1,15 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Bar, Button, Card, Field, Header, Icon, Notice, Screen, Segmented, useToast } from '@/components/ui';
+import { Bar, Button, Card, Chip, Field, Header, Icon, Notice, Screen, Segmented, useToast } from '@/components/ui';
 import { addDays, dayKey, fromKey } from '@/lib/dates';
 import { ACTIVITY_HINT, bmi, bmiBand, KCAL_PER_KG, kcalStr, targets, type ActivityLevel, type Gender, type Goal, type Profile } from '@/lib/nutrition';
-import { useStore } from '@/lib/store';
+import { MEAL_PRESETS, MEALS, useStore, type Meal } from '@/lib/store';
+import { mealShare } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
 import { goBack } from '@/lib/nav';
 
-const STEPS = ['goal', 'about', 'body', 'target', 'activity', 'diet', 'plan'] as const;
+const STEPS = ['goal', 'about', 'body', 'target', 'activity', 'diet', 'meals', 'plan'] as const;
 type Step = (typeof STEPS)[number];
 
 const GOALS: { id: Goal; title: string; body: string; icon: string }[] = [
@@ -21,7 +22,7 @@ const PACES = [0.25, 0.5, 0.75];
 export default function Onboarding() {
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const editing = edit === '1';
-  const { state, saveProfile } = useStore();
+  const { state, saveProfile, updateSettings } = useStore();
   const toast = useToast();
   const p0 = state.profile;
   const [step, setStep] = useState<Step>('goal');
@@ -37,6 +38,7 @@ export default function Onboarding() {
   const [pace, setPace] = useState(p0?.pace ?? 0.5);
   const [activity, setActivity] = useState<ActivityLevel>(p0?.activity ?? 'Light');
   const [diet, setDiet] = useState<Profile['diet']>(p0?.diet ?? 'veg');
+  const [meals, setMeals] = useState<Meal[]>(state.settings.meals);
   const [err, setErr] = useState<Record<string, string>>({});
 
   const name = state.account?.name || p0?.name || 'there';
@@ -78,6 +80,7 @@ export default function Onboarding() {
     if (!validate()) return;
     if (step === 'plan') {
       saveProfile(profile);
+      updateSettings({ meals });
       if (editing) {
         toast('Profile updated. Your targets have been recalculated.');
         goBack();
@@ -102,6 +105,11 @@ export default function Onboarding() {
   const weeks = goal === 'maintain' || !realPace ? 0 : Math.ceil(Math.abs(kg - tgt) / realPace);
   const reachBy = weeks ? fromKey(addDays(dayKey(), weeks * 7)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const b = cm >= 100 && cm <= 250 && kg >= 25 && kg <= 300 ? bmi(profile) : 0;
+  const sameMeals = (xs: Meal[]) => xs.length === meals.length && xs.every((m) => meals.includes(m));
+  const toggleMeal = (m: Meal) => {
+    const next = MEALS.filter((x) => (x === m ? !meals.includes(m) : meals.includes(x)));
+    if (next.length) setMeals(next);
+  };
 
   return (
     <Screen edges={['top', 'bottom']} bottomInset={24}>
@@ -188,6 +196,22 @@ export default function Onboarding() {
           </>
         )}
 
+        {step === 'meals' && (
+          <>
+            <Text style={T.h1}>When do you eat?</Text>
+            <Text style={[T.body, { color: C.ink2 }]}>Home shows only these meals, and your budget is split between them. You can change this any time.</Text>
+            {MEAL_PRESETS.map((p) => (
+              <Choice key={p.id} active={sameMeals(p.meals)} onPress={() => setMeals(p.meals)} icon={p.icon} title={p.title} body={p.body} />
+            ))}
+            <Text style={[styles.lbl, { marginTop: 6 }]}>Or pick your own</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MEALS.map((m) => (
+                <Chip key={m} label={m} active={meals.includes(m)} onPress={() => toggleMeal(m)} tone={C.brand} />
+              ))}
+            </View>
+          </>
+        )}
+
         {step === 'plan' && (
           <>
             <Text style={T.h1}>Your daily plan</Text>
@@ -210,6 +234,15 @@ export default function Onboarding() {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <Mini icon="barley" color={C.fibre} label="Fibre" value={`${plan.fibre} g`} />
             </View>
+            <Card style={{ gap: 10 }}>
+              <Text style={T.h3}>Across your meals</Text>
+              {meals.map((m) => (
+                <View key={m} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={T.body}>{m}</Text>
+                  <Text style={[T.body, { fontFamily: F.bold, color: C.ink }]}>about {kcalStr(Math.round((plan.kcal * mealShare(m, meals)) / 10) * 10)} kcal</Text>
+                </View>
+              ))}
+            </Card>
             {weeks ? (
               <Notice icon="flag-checkered">
                 <Text style={T.small}>

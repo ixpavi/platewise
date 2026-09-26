@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Chip, DietMark, Empty, FoodIcon, Header, Icon, RoundButton, tap, useToast } from '@/components/ui';
-import { FOODS, type Category, type Food } from '@/data/foods';
+import { ALL_FOODS, defaultPortion, type Category, type Food } from '@/data/foods';
 import { pickBus } from '@/lib/bus';
 import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { kcalStr, scale } from '@/lib/nutrition';
 import { searchFoods } from '@/lib/search';
 import { MEALS, useStore, type Meal } from '@/lib/store';
-import { mealForNow } from '@/lib/summary';
+import { useMeals } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
 import { goBack } from '@/lib/nav';
 
@@ -20,7 +20,8 @@ export default function LogFood() {
   const params = useLocalSearchParams<{ meal?: string; day?: string; mode?: string; q?: string }>();
   const pickMode = params.mode === 'pick';
   const day = params.day || dayKey();
-  const [meal, setMeal] = useState<Meal>((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : mealForNow());
+  const myMeals = useMeals();
+  const [meal, setMeal] = useState<Meal>((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : myMeals.now);
   const [q, setQ] = useState(params.q ?? '');
   const [filter, setFilter] = useState<Filter>('All');
   const [added, setAdded] = useState<{ id: string; name: string }[]>([]);
@@ -34,7 +35,7 @@ export default function LogFood() {
     [pickMode],
   );
 
-  const all = useMemo(() => [...FOODS, ...Object.values(state.custom)], [state.custom]);
+  const all = useMemo(() => [...Object.values(state.custom), ...ALL_FOODS], [state.custom]);
   const pool = useMemo(() => {
     if (filter === 'Favourites') return state.favs.map((id) => all.find((f) => f.id === id)).filter((f): f is Food => !!f);
     if (filter === 'All') return all;
@@ -54,11 +55,11 @@ export default function LogFood() {
   };
 
   const quickAdd = (f: Food) => {
-    const unit = f.units[0];
-    const [e] = addEntries(day, [{ foodId: f.id, unitId: unit.id, qty: 1, grams: unit.grams, meal, t: stampFor(day), source: 'search' }]);
+    const p = defaultPortion(f);
+    const [e] = addEntries(day, [{ foodId: f.id, unitId: p.unit.id, qty: p.qty, grams: p.grams, meal, t: stampFor(day), source: 'search' }]);
     tap('success');
     setAdded((a) => [...a, { id: e.id, name: f.name }]);
-    toast(`Added 1 ${unit.label} ${f.name} to ${meal.toLowerCase()}.`, {
+    toast(`Added ${p.label} ${f.name} to ${meal.toLowerCase()}.`, {
       label: 'Undo',
       run: () => {
         removeEntry(day, e.id);
@@ -68,12 +69,12 @@ export default function LogFood() {
   };
 
   const Row = ({ f }: { f: Food }) => {
-    const unit = f.units[0];
-    const kcal = scale(f, unit.grams).kcal;
+    const p = defaultPortion(f);
+    const kcal = scale(f, p.grams).kcal;
     const fav = state.favs.includes(f.id);
     return (
       <View style={styles.row}>
-        <Pressable onPress={() => open(f)} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${f.name}, ${kcalStr(kcal)} kcal per ${unit.label}`}>
+        <Pressable onPress={() => open(f)} style={({ pressed }) => [styles.rowMain, pressed && { opacity: 0.6 }]} accessibilityRole="button" accessibilityLabel={`${f.name}, ${kcalStr(kcal)} kcal per ${p.label}`}>
         <FoodIcon food={f} size={44} />
         <View style={{ flex: 1, gap: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -84,8 +85,8 @@ export default function LogFood() {
             {f.custom ? <Icon name="account-edit-outline" size={14} color={C.coach} /> : null}
           </View>
           <Text style={T.small}>
-            1 {unit.label}
-            {unit.grams !== 1 ? ` (${unit.grams} ${f.base})` : ''} · {kcalStr(kcal)} kcal
+            {p.label}
+            {p.qty === 1 ? ` (${p.grams} ${f.base})` : ''} · {kcalStr(kcal)} kcal
           </Text>
         </View>
         </Pressable>
@@ -124,7 +125,7 @@ export default function LogFood() {
         />
         {!pickMode ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 10 }}>
-            {MEALS.map((m) => (
+            {myMeals.options(meal).map((m) => (
               <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
             ))}
           </ScrollView>

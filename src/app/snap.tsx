@@ -9,9 +9,9 @@ import { dayKey } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
 import { add, fmt, kcalStr, scale, ZERO } from '@/lib/nutrition';
 import { recognizer, suggestFoods } from '@/lib/recognition';
-import { MEALS, useStore, type Meal } from '@/lib/store';
+import { useStore, type Meal } from '@/lib/store';
 import { keepPhoto } from '@/lib/photos';
-import { mealForNow } from '@/lib/summary';
+import { useMeals } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
 import { goBack } from '@/lib/nav';
 
@@ -27,7 +27,8 @@ export default function Snap() {
   const { food, addEntries, removeEntry, state } = useStore();
   const toast = useToast();
   const [phase, setPhase] = useState<Phase>({ k: 'choose' });
-  const [meal, setMeal] = useState<Meal>(mealForNow());
+  const myMeals = useMeals();
+  const [meal, setMeal] = useState<Meal>(myMeals.now);
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -204,7 +205,7 @@ export default function Snap() {
 
             <Text style={[T.label, { marginTop: 18, marginBottom: 8 }]}>Meal</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-              {MEALS.map((m) => (
+              {myMeals.options(meal).map((m) => (
                 <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
               ))}
             </ScrollView>

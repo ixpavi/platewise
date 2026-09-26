@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Linking, Switch, Text, View } from 'react-native';
-import { Button, Card, Field, Header, Notice, RoundButton, Screen, Section, useToast } from '@/components/ui';
+import { Button, Card, Chip, Field, Header, Notice, RoundButton, Screen, Section, useToast } from '@/components/ui';
+import { reminderMeals } from '@/lib/meal-reminders';
 import { goBack } from '@/lib/nav';
 import { kcalStr, targets } from '@/lib/nutrition';
 import { applyReminders, ensurePermission, remindersSupported, testReminder, type Reminders } from '@/lib/reminders';
-import { useStore } from '@/lib/store';
+import { MEALS, useStore, type Meal } from '@/lib/store';
 import { C, F, T } from '@/theme';
 
 const fmt12 = (hhmm: string) => {
@@ -36,6 +37,14 @@ export default function Settings() {
     goBack();
   };
 
+  // Home, the budget split and reminders all follow the meals picked here (reminders re-schedule on change).
+  const toggleMeal = (m: Meal) => {
+    const next = MEALS.filter((x) => (x === m ? !s.meals.includes(m) : s.meals.includes(x)));
+    if (!next.length) return toast('Keep at least one meal.');
+    updateSettings({ meals: next });
+  };
+  const remindable = reminderMeals(s.meals);
+
   // Reminders apply immediately, so turning them on asks for permission right away.
   const setReminders = async (next: Reminders) => {
     setRem(next);
@@ -46,11 +55,11 @@ export default function Settings() {
         const off = { ...next, meals: false };
         setRem(off);
         updateSettings({ reminders: off });
-        await applyReminders(off);
+        await applyReminders(off, s.meals);
         setRemState({ denied: true });
         return;
       }
-      const n = await applyReminders(next);
+      const n = await applyReminders(next, s.meals);
       updateSettings({ reminders: next });
       setRemState({ msg: n ? `${n} reminders scheduled.` : 'Reminders are off.' });
     } catch {
@@ -62,7 +71,18 @@ export default function Settings() {
     <Screen edges={['top', 'bottom']}>
       <Header title="Settings" onBack={() => goBack()} />
 
-      <Section title="Daily calorie budget" style={{ marginTop: 6 }}>
+      <Section title="Your meals" style={{ marginTop: 6 }}>
+        <Card style={{ gap: 12 }}>
+          <Text style={T.small}>Pick the meals you usually eat. Home shows these, and your budget is split between them. Eat twice a day? Pick Brunch and Dinner.</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {MEALS.map((m) => (
+              <Chip key={m} label={m} active={s.meals.includes(m)} onPress={() => toggleMeal(m)} tone={C.brand} />
+            ))}
+          </View>
+        </Card>
+      </Section>
+
+      <Section title="Daily calorie budget">
         <Card style={{ gap: 14 }}>
           <Field label="Calorie budget" value={budget} onChangeText={(t) => setBudget(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder={`Automatic: ${kcalStr(auto.kcal)}`} suffix="kcal" error={err} maxLength={4} />
           <Text style={T.tiny}>Leave blank to use the budget calculated from your plan. Set one if a dietitian gave you a number.</Text>
@@ -75,11 +95,11 @@ export default function Settings() {
           {!remindersSupported ? (
             <Notice icon="cellphone">Reminders work in the phone app. Browsers can’t send them while the page is closed.</Notice>
           ) : null}
-          <Toggle label="Meal reminders" sub="Breakfast, lunch and dinner" value={rem.meals} disabled={!remindersSupported || remState.busy} onChange={(v) => setReminders({ ...rem, meals: v })} />
+          <Toggle label="Meal reminders" sub={remindable.length ? remindable.map((m) => m.meal).join(', ') : 'Pick a main meal above to get reminders'} value={rem.meals} disabled={!remindersSupported || remState.busy} onChange={(v) => setReminders({ ...rem, meals: v })} />
           {rem.meals ? (
             <View style={{ gap: 8, paddingLeft: 4 }}>
-              {(['breakfast', 'lunch', 'dinner'] as const).map((k) => (
-                <TimeRow key={k} label={k[0].toUpperCase() + k.slice(1)} value={rem[k]} onChange={(v) => setReminders({ ...rem, [k]: v })} />
+              {remindable.map((m) => (
+                <TimeRow key={m.key} label={m.meal} value={rem[m.key]} onChange={(v) => setReminders({ ...rem, [m.key]: v })} />
               ))}
             </View>
           ) : null}

@@ -8,7 +8,7 @@ import { collection, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { getCloud } from './firebase';
-import { useStore, type DayLog, type State, type SyncMeta } from './store';
+import { normalizeSettings, useStore, type DayLog, type State, type SyncMeta } from './store';
 
 export type SyncStatus = 'off' | 'idle' | 'syncing' | 'error' | 'offline';
 type Ctx = { status: SyncStatus; error: string | null; user: User | null; authChecked: boolean; pulledUid: string | null; syncNow(): Promise<void>; wipeCloud(): Promise<void> };
@@ -122,7 +122,7 @@ export function CloudSync({ children }: { children: React.ReactNode }) {
         next = {
           ...next,
           profile: remoteRoot.profile ?? s.profile,
-          settings: { ...s.settings, ...(remoteRoot.settings ?? {}) },
+          settings: normalizeSettings({ ...s.settings, ...(remoteRoot.settings ?? {}) }),
           weights: remoteRoot.weights ?? s.weights,
           favs: remoteRoot.favs ?? s.favs,
           recents: remoteRoot.recents ?? s.recents,
@@ -182,7 +182,7 @@ export function CloudSync({ children }: { children: React.ReactNode }) {
       if (code === 'unavailable' || /network|offline/i.test(String((e as Error)?.message))) setStatus('offline');
       else {
         setStatus('error');
-        setError(code === 'permission-denied' ? 'Firestore rules are blocking sync. Publish the rules from the README.' : 'Sync failed. It will retry automatically.');
+        setError(code === 'permission-denied' ? 'The server’s security rules are blocking backup. Your logs are safe on this phone and will back up once that’s fixed.' : 'Sync failed. It will retry automatically.');
       }
     } finally {
       busy.current = false;

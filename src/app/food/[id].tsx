@@ -8,7 +8,7 @@ import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
 import { fmt, giBand, healthScore, kcalStr, scale } from '@/lib/nutrition';
 import { MEALS, useStore, type Meal } from '@/lib/store';
-import { mealForNow, useDaySummary } from '@/lib/summary';
+import { useDaySummary, useMeals } from '@/lib/summary';
 import { C, F, T } from '@/theme';
 import { goBack } from '@/lib/nav';
 
@@ -20,8 +20,10 @@ export default function FoodDetail() {
   const f = food(params.id);
   const entry = params.entry ? getDay(day).food.find((e) => e.id === params.entry) : undefined;
   const [unitId, setUnitId] = useState(entry?.unitId ?? f?.units[0]?.id ?? 'g');
-  const [qty, setQty] = useState(entry?.qty ?? 1);
-  const [meal, setMeal] = useState<Meal>(entry?.meal ?? ((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : mealForNow()));
+  // A food with no household unit starts at 100 g, not 1 g.
+  const [qty, setQty] = useState(entry?.qty ?? (f?.units[0]?.grams === 1 ? 100 : 1));
+  const myMeals = useMeals();
+  const [meal, setMeal] = useState<Meal>(entry?.meal ?? ((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : myMeals.now));
   const [qtyText, setQtyText] = useState<string | null>(null);
   const [scoreInfo, setScoreInfo] = useState(false);
   const qtyInput = useRef<TextInput>(null);
@@ -202,12 +204,12 @@ export default function FoodDetail() {
 
           <Text style={[T.label, { marginTop: 20, marginBottom: 8 }]}>Meal</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {MEALS.map((m) => (
+            {myMeals.options(meal).map((m) => (
               <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
             ))}
           </ScrollView>
           <Text style={[T.tiny, { marginTop: 18 }]}>
-            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {f.id.startsWith('bc-') ? 'From Open Food Facts; check against the pack.' : f.custom ? 'Values you entered for this food.' : 'Approximate reference values (IFCT / USDA).'}
+            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {f.id.startsWith('bc-') ? 'From Open Food Facts; check against the pack.' : f.custom ? 'Values you entered for this food.' : f.src === 'indb' ? 'From the Indian Nutrient Databank (INDB), for a typical home recipe.' : f.src === 'usda' ? 'From USDA FoodData Central (FNDDS).' : 'Approximate reference values (IFCT / USDA).'}
           </Text>
         </ScrollView>
 

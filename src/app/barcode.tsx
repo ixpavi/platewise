@@ -8,14 +8,15 @@ import { lookupBarcode, LookupError, productCodeFromScan, validBarcode } from '@
 import { dayKey } from '@/lib/dates';
 import { goBack } from '@/lib/nav';
 import { useStore } from '@/lib/store';
-import { mealForNow } from '@/lib/summary';
+import { useMeals } from '@/lib/summary';
 import { C, R, T } from '@/theme';
 
 type Result = { k: 'idle' } | { k: 'looking'; code: string } | { k: 'notfound'; code: string } | { k: 'nodata'; code: string; name: string } | { k: 'error'; code: string; msg: string };
 
 export default function Barcode() {
   const params = useLocalSearchParams<{ meal?: string; day?: string }>();
-  const meal = params.meal || mealForNow();
+  const mealNow = useMeals().now;
+  const meal = params.meal || mealNow;
   const day = params.day || dayKey();
   const { state, saveCustomFood } = useStore();
   const [permission, requestPermission] = useCameraPermissions();

@@ -119,7 +119,7 @@ export default function Me() {
 
       <Section title="Settings">
         <Card style={{ padding: 0 }}>
-          <Link icon="tune-variant" label="Budget and reminders" sub="Calorie budget and meal reminders" onPress={() => router.push('/settings')} />
+          <Link icon="tune-variant" label="Meals, budget and reminders" sub="Your meals, calorie budget and meal reminders" onPress={() => router.push('/settings')} />
           <Link icon="image-multiple-outline" label="Meal photos" sub={photoCount ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : 'Photos from your photo logs'} onPress={() => router.push('/photos')} />
           <Link icon="scale-bathroom" label="Weight log" sub={`${state.weights.length} entries`} onPress={() => router.push('/weight')} />
           <Link icon="star-outline" label="Favourite foods" sub={`${state.favs.length} saved`} onPress={() => router.push({ pathname: '/log', params: {} })} last />
