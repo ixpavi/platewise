@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Bar, Button, Card, Chip, Field, Header, Icon, Notice, Screen, Segmented, useToast } from '@/components/ui';
 import { addDays, dayKey, fromKey } from '@/lib/dates';
-import { ACTIVITY_HINT, bmi, bmiBand, KCAL_PER_KG, kcalStr, targets, type ActivityLevel, type Gender, type Goal, type Profile } from '@/lib/nutrition';
+import { ACTIVITY_HINT, bmi, bmiBand, KCAL_PER_KG, kcalStr, steadyGoal, targets, type ActivityLevel, type Gender, type Goal, type Profile } from '@/lib/nutrition';
 import { MEAL_PRESETS, MEALS, useStore, type Meal } from '@/lib/store';
 import { mealShare } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
@@ -16,6 +16,7 @@ const GOALS: { id: Goal; title: string; body: string; icon: string }[] = [
   { id: 'lose', title: 'Lose weight', body: 'A steady calorie deficit', icon: 'trending-down' },
   { id: 'maintain', title: 'Eat healthier', body: 'Stay at my weight, eat better', icon: 'leaf' },
   { id: 'gain', title: 'Gain weight', body: 'Build up with a surplus', icon: 'trending-up' },
+  { id: 'fitness', title: 'Fitness', body: 'Stay at my weight, more protein for training', icon: 'arm-flex-outline' },
 ];
 const PACES = [0.25, 0.5, 0.75];
 
@@ -41,23 +42,25 @@ export default function Onboarding() {
   const [meals, setMeals] = useState<Meal[]>(state.settings.meals);
   const [err, setErr] = useState<Record<string, string>>({});
 
-  const name = state.account?.name || p0?.name || 'there';
+  const [nm, setNm] = useState(state.account?.name || p0?.name || '');
+  const name = nm.trim() || 'there';
   const cm = hUnit === 'cm' ? Number(heightCm) : Math.round((Number(ft) * 12 + Number(inch || 0)) * 2.54);
   const kg = Number(weight);
-  const tgt = goal === 'maintain' ? kg : Number(targetKg);
+  const tgt = steadyGoal(goal) ? kg : Number(targetKg);
 
-  const profile: Profile = { name: state.account?.name || p0?.name || 'You', gender, age: Number(age), heightCm: cm, weightKg: kg, targetKg: tgt, activity, goal, pace: goal === 'maintain' ? 0 : pace, diet };
+  const profile: Profile = { name: nm.trim().replace(/\s+/g, ' ').slice(0, 40) || 'You', gender, age: Number(age), heightCm: cm, weightKg: kg, targetKg: tgt, activity, goal, pace: steadyGoal(goal) ? 0 : pace, diet };
   const plan = useMemo(() => targets(profile, null), [gender, age, cm, kg, tgt, activity, goal, pace]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const minHealthy = Math.round(18.5 * (cm / 100) ** 2);
   // A realistic first target the user can edit: 5 kg away, but never below a healthy weight.
   const suggested = goal === 'gain' ? Math.round(kg + 4) : Math.max(minHealthy, Math.round(kg - 5));
-  const flow = STEPS.filter((s) => s !== 'target' || goal !== 'maintain');
+  const flow = STEPS.filter((s) => s !== 'target' || !steadyGoal(goal));
   const i = flow.indexOf(step);
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (step === 'about') {
+      if (!nm.trim()) e.name = 'Enter your name.';
       const a = Number(age);
       if (!age || !Number.isFinite(a)) e.age = 'Enter your age.';
       else if (a < 13 || a > 100) e.age = 'Platewise is for ages 13 to 100.';
@@ -101,8 +104,8 @@ export default function Onboarding() {
   };
 
   // When a safety floor raises the budget, the real pace is slower than the one picked.
-  const realPace = goal === 'maintain' ? 0 : Math.round(((Math.abs(plan.tdee - plan.kcal) * 7) / KCAL_PER_KG) * 100) / 100;
-  const weeks = goal === 'maintain' || !realPace ? 0 : Math.ceil(Math.abs(kg - tgt) / realPace);
+  const realPace = steadyGoal(goal) ? 0 : Math.round(((Math.abs(plan.tdee - plan.kcal) * 7) / KCAL_PER_KG) * 100) / 100;
+  const weeks = steadyGoal(goal) || !realPace ? 0 : Math.ceil(Math.abs(kg - tgt) / realPace);
   const reachBy = weeks ? fromKey(addDays(dayKey(), weeks * 7)).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const b = cm >= 100 && cm <= 250 && kg >= 25 && kg <= 300 ? bmi(profile) : 0;
   const sameMeals = (xs: Meal[]) => xs.length === meals.length && xs.every((m) => meals.includes(m));
@@ -131,6 +134,7 @@ export default function Onboarding() {
           <>
             <Text style={T.h1}>A little about you</Text>
             <Text style={[T.body, { color: C.ink2 }]}>Sex and age change how much energy your body uses at rest.</Text>
+            <Field label="Name" value={nm} onChangeText={setNm} placeholder="Your name" maxLength={40} autoCapitalize="words" error={err.name} />
             <Text style={styles.lbl}>Sex</Text>
             <Segmented options={['Female', 'Male', 'Other'] as const} value={gender} onChange={setGender} />
             <Field label="Age" value={age} onChangeText={(t) => setAge(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" maxLength={3} placeholder="e.g. 28" suffix="years" error={err.age} />

@@ -1,10 +1,11 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Chip, DietMark, Empty, FoodIcon, Header, Icon, RoundButton, tap, useToast } from '@/components/ui';
+import { WebFindSheet, type WebFindState } from '@/components/web-find';
 import { ALL_FOODS, defaultPortion, type Category, type Food } from '@/data/foods';
-import { aiAvailable, AiError, estimateFood, estimateToFood } from '@/lib/ai';
+import { aiAvailable, AiError, estimateFood, estimateToFood, findOnline, webSearchAvailable, webToFood, type WebFind } from '@/lib/ai';
 import { pickBus } from '@/lib/bus';
 import { dayKey, isToday, relativeDay, stampFor } from '@/lib/dates';
 import { kcalStr, scale } from '@/lib/nutrition';
@@ -28,6 +29,8 @@ export default function LogFood() {
   const [added, setAdded] = useState<{ id: string; name: string }[]>([]);
   const { state, addEntries, removeEntry, toggleFav, saveCustomFood } = useStore();
   const [aiBusy, setAiBusy] = useState(false);
+  const [web, setWeb] = useState<WebFindState | null>(null);
+  const webRun = useRef(0);
   const toast = useToast();
 
   useEffect(
@@ -88,7 +91,7 @@ export default function LogFood() {
           </View>
           <Text style={T.small}>
             {p.label}
-            {p.qty === 1 ? ` (${p.grams} ${f.base})` : ''} · {kcalStr(kcal)} kcal
+            {p.qty === 1 && !f.noWeight ? ` (${p.grams} ${f.base})` : ''} · {kcalStr(kcal)} kcal
           </Text>
         </View>
         </Pressable>
@@ -109,8 +112,8 @@ export default function LogFood() {
   // Not in the database: ask AI for a typical estimate, saved like a custom food (marked as AI).
   const askAi = async () => {
     if (aiBusy || query.length < 2) return;
-    const slug = normalise(query).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'food';
-    const id = `ai-${slug}`;
+    closeWeb();
+    const id = `ai-${slugOf(query)}`;
     const known = state.custom[id];
     if (known) return open(known); // asked before: no need to ask again
     setAiBusy(true);
@@ -125,19 +128,73 @@ export default function LogFood() {
     }
   };
 
+  const slugOf = (s: string) => normalise(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'food';
+
+  // A brand or restaurant dish: look for the values it publishes, with Google Search.
+  const findWeb = async () => {
+    if (query.length < 2) return;
+    const run = ++webRun.current;
+    setWeb({ busy: true });
+    try {
+      const result = await findOnline(query);
+      if (run === webRun.current) setWeb({ busy: false, result });
+    } catch (e) {
+      if (run === webRun.current) setWeb({ busy: false, error: e instanceof AiError ? e.message : 'Couldn’t search right now. Try again.' });
+    }
+  };
+  const closeWeb = () => {
+    webRun.current++;
+    setWeb(null);
+  };
+  const takeWeb = (w: WebFind) => {
+    const food = webToFood(`web-${slugOf(w.name)}`, query, w, state.profile?.diet === 'nonveg' ? 'nonveg' : 'veg');
+    saveCustomFood(food);
+    closeWeb();
+    open(food);
+  };
+  // Your own values for a whole meal or dish; after saving it opens ready to log.
+  const enterValues = (w?: WebFind) => {
+    closeWeb();
+    const p = w?.perServing;
+    router.push({
+      pathname: '/custom-food',
+      params: {
+        name: w?.name ?? query,
+        ...(pickMode ? {} : { log: '1', meal, day }),
+        ...(w && p
+          ? {
+              serving: w.servingGrams ? String(w.servingGrams) : '',
+              servingLabel: w.servingLabel,
+              kcal: String(p.kcal),
+              carb: String(p.carb),
+              protein: String(p.protein),
+              fat: String(p.fat),
+              fibre: p.fibre ? String(p.fibre) : '',
+              sugar: p.sugar ? String(p.sugar) : '',
+              drink: w.isDrink ? '1' : '',
+              diet: w.diet ?? '',
+              from: w.from ?? w.sources[0]?.title ?? '',
+            }
+          : {}),
+      },
+    });
+  };
+
+  const short = query.length > 22 ? `${query.slice(0, 21)}…` : query;
   const customCard = (
     <View style={styles.customCard}>
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
         <Icon name="plus-box-outline" size={22} color={C.brand} />
-        <Text style={[T.body, { flex: 1 }]}>{query && !results.length ? `No match for “${query}”.` : 'Can’t find your food?'} Add it with the values from its label or recipe.</Text>
+        <Text style={[T.body, { flex: 1 }]}>{query && !results.length ? `No match for “${query}”.` : 'Can’t find your food?'} Add it with the values from its label, menu or recipe.</Text>
       </View>
       {aiAvailable() && query.length >= 2 ? (
         <>
-          <Button label={`Estimate “${query.length > 22 ? `${query.slice(0, 21)}…` : query}” with AI`} icon="creation" small loading={aiBusy} onPress={askAi} />
-          <Text style={T.tiny}>AI gives a typical estimate from the name, sent to Google Gemini. For packets, reading the label is more accurate.</Text>
+          {webSearchAvailable() ? <Button label={`Find “${short}” online`} icon="web" small onPress={findWeb} /> : null}
+          <Button label={`Estimate “${short}” with AI`} icon="creation" kind="ghost" small loading={aiBusy} onPress={askAi} />
+          <Text style={T.tiny}>Online search looks for the values a brand or restaurant publishes. An estimate is a typical home-style recipe. Both use Google Gemini.</Text>
         </>
       ) : null}
-      <Button label="Create a custom food" kind="soft" small onPress={() => router.push({ pathname: '/custom-food', params: { name: query } })} />
+      <Button label="Enter the values yourself" icon="pencil-outline" kind="soft" small onPress={() => enterValues()} />
     </View>
   );
 
@@ -213,6 +270,20 @@ export default function LogFood() {
                 </>
               ) : null}
             </View>
+          ) : query.length >= 2 && !pickMode ? (
+            // Branded or restaurant food: its own published values beat a generic recipe.
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.qActions}>
+              {webSearchAvailable() ? (
+                <Pressable onPress={findWeb} style={styles.qAction} accessibilityRole="button" accessibilityLabel={`Find ${query} online`}>
+                  <Icon name="web" size={17} color={C.brand} />
+                  <Text style={styles.qActionText} numberOfLines={1}>{`Find “${short}” online`}</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => enterValues()} style={styles.qAction} accessibilityRole="button">
+                <Icon name="pencil-outline" size={17} color={C.brand} />
+                <Text style={styles.qActionText}>Enter its values</Text>
+              </Pressable>
+            </ScrollView>
           ) : null
         }
         renderItem={({ item }) => <Row f={item} />}
@@ -225,6 +296,8 @@ export default function LogFood() {
         }
         ListFooterComponent={customCard}
       />
+
+      <WebFindSheet query={query} state={web} onClose={closeWeb} onUse={takeWeb} onEdit={enterValues} onManual={() => enterValues()} onEstimate={askAi} />
 
       {added.length ? (
         <View style={styles.doneBar}>
@@ -244,6 +317,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.line2 },
   rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   customCard: { marginTop: 16, backgroundColor: C.card, borderRadius: R.lg, padding: 14, gap: 10, borderWidth: 1, borderColor: C.line },
+  qActions: { gap: 8, paddingBottom: 6 },
+  qAction: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.brandSoft, borderRadius: R.pill, paddingHorizontal: 12, paddingVertical: 8, maxWidth: 260 },
+  qActionText: { fontFamily: F.semi, fontSize: 13.5, color: C.brand, flexShrink: 1 },
   snapRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.citrusSoft, borderRadius: R.lg, padding: 12 },
   snapIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.citrus, alignItems: 'center', justifyContent: 'center' },
   doneBar: { position: 'absolute', left: 16, right: 16, bottom: 24, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: R.lg, padding: 12, paddingLeft: 16, borderWidth: 1, borderColor: C.line },

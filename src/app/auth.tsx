@@ -45,7 +45,7 @@ export default function Auth() {
   // pull that person's logs into someone else's cloud account.
   const localOwner = state.account?.provider === 'local' && !linking ? state.account : null;
   const blockedMsg = localOwner
-    ? `This phone has a phone-only account (${localOwner.email}). Log in to it and use “Back up to a cloud account” in Me, or delete it from Me before using a different account.`
+    ? `This phone has a phone-only account (${localOwner.email}). Log in to it and use “Back up to a cloud account” in Profile, or delete it from Profile before using a different account.`
     : '';
 
   const finishCloud = (acc: Account) => {
@@ -251,7 +251,7 @@ export default function Auth() {
         ) : (
           <Notice icon="shield-lock-outline">
             {cloudEnabled
-              ? 'Phone-only accounts keep everything on this phone. You can back up to a cloud account later from Me.'
+              ? 'Phone-only accounts keep everything on this phone. You can back up to a cloud account later from Profile.'
               : 'Your account and logs are stored on this phone. Google sign-in and cloud backup switch on once Firebase is set up (see README).'}
           </Notice>
         )}

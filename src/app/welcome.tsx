@@ -7,7 +7,7 @@ import { Button, Icon, LightStatusBar } from '@/components/ui';
 import { C, F, T } from '@/theme';
 
 const SLIDES = [
-  { icon: 'camera-iris', tint: C.citrus, title: 'Snap your plate', body: 'Photograph your meal and tap the foods on it. Portions in katoris, rotis and pieces, not just grams.' },
+  { icon: 'camera-iris', tint: C.citrus, title: 'Scan your food', body: 'Take or upload a photo of your food. Platewise identifies it and shows the calories and nutrition, in katoris, rotis and pieces, not just grams.' },
   { icon: 'chart-donut', tint: C.brand, title: 'Know your numbers', body: 'A daily calorie budget built from your body and goal, with carbs, protein, fat and fibre tracked for you.' },
   { icon: 'barcode-scan', tint: C.coach, title: 'Scan the packet', body: 'Point the camera at a barcode to get calories and nutrition for packaged food, from biscuits to namkeen.' },
 ];

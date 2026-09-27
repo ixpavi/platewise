@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Bar, Card, FoodIcon, Icon, Notice, Ring, RoundButton, Screen, Section, useToast } from '@/components/ui';
 import { PhotoStrip, PhotoViewer } from '@/components/photos';
 import { addDays, dayKey, fromKey, greeting, isToday, lastNDays, relativeDay, weekdayShort } from '@/lib/dates';
 import { fmtQty, unitLabel } from '@/lib/format';
-import { fmt, fmtKg, kcalStr } from '@/lib/nutrition';
+import { fmt, fmtKg, kcalStr, steadyGoal } from '@/lib/nutrition';
 import { MEAL_INFO, MEALS, useStore, type Meal } from '@/lib/store';
 import { mealShare, useDaySummary, useMeals, type DaySummary } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
@@ -31,9 +31,9 @@ export default function Home() {
     <Screen bottomInset={40}>
       <View style={styles.top}>
         <View style={{ flex: 1 }}>
-          <Text style={T.small}>{greeting()},</Text>
+          <Text style={T.small}>{greeting()}</Text>
           <Text style={[T.h1, { fontSize: 26 }]} numberOfLines={1}>
-            {first}
+            Welcome, {first}
           </Text>
         </View>
         {streak > 0 ? (
@@ -55,9 +55,9 @@ export default function Home() {
         <Pressable onPress={() => router.push('/snap')} style={({ pressed }) => [styles.snap, pressed && { opacity: 0.9 }]} accessibilityRole="button">
           <View style={styles.snapRing} />
           <View style={{ flex: 1 }}>
-            <Text style={[T.label, { color: C.citrusInk, opacity: 0.6 }]}>Snap</Text>
-            <Text style={{ fontFamily: F.display, fontSize: 21, color: C.citrusInk, letterSpacing: -0.4 }}>Snap your {myMeals.now.toLowerCase()}</Text>
-            <Text style={[T.small, { color: C.citrusInk, opacity: 0.75 }]}>Photo your plate, tap the foods, done.</Text>
+            <Text style={[T.label, { color: C.citrusInk, opacity: 0.6 }]}>Scan food</Text>
+            <Text style={{ fontFamily: F.display, fontSize: 21, color: C.citrusInk, letterSpacing: -0.4 }}>Scan your food</Text>
+            <Text style={[T.small, { color: C.citrusInk, opacity: 0.75 }]}>Take or upload a photo of your {myMeals.now.toLowerCase()} to see its nutrition.</Text>
           </View>
           <View style={styles.snapBtn}>
             <Icon name="camera-iris" size={26} color={C.citrus} />
@@ -66,6 +66,8 @@ export default function Home() {
       ) : (
         <Notice icon="calendar-edit">{`You're viewing ${relativeDay(selected).toLowerCase()}. Anything you add goes to that day.`}</Notice>
       )}
+
+      <RecentScans />
 
       <Section title="Meals">
         <View style={{ gap: 10 }}>
@@ -81,6 +83,57 @@ export default function Home() {
 
       <DailyTip sum={sum} />
     </Screen>
+  );
+}
+
+/* ---------------- recent scans ---------------- */
+
+/** The last few meals logged from a photo (the scan history). */
+function RecentScans() {
+  const { state, food } = useStore();
+  const scans = useMemo(() => {
+    const byPhoto = new Map<string, { day: string; t: number; photo: string; meal: Meal; names: string[]; kcal: number; first: { id: string; foodId: string } }>();
+    for (let i = 0; i < 30 && byPhoto.size < 12; i++) {
+      const k = addDays(dayKey(), -i);
+      for (const e of state.days[k]?.food ?? []) {
+        if (e.source !== 'snap' || !e.photo) continue;
+        const f = food(e.foodId);
+        if (!f) continue;
+        const kcal = (f.n.kcal * e.grams) / 100;
+        const s = byPhoto.get(e.photo);
+        if (s) {
+          s.names.push(f.name);
+          s.kcal += kcal;
+        } else byPhoto.set(e.photo, { day: k, t: e.t, photo: e.photo, meal: e.meal, names: [f.name], kcal, first: { id: e.id, foodId: e.foodId } });
+      }
+    }
+    return [...byPhoto.values()].sort((a, b) => b.t - a.t).slice(0, 3);
+  }, [state.days, food]);
+  if (!scans.length) return null;
+  return (
+    <Section title="Recent scans">
+      <Card style={{ padding: 0 }}>
+        {scans.map((s, i) => (
+          <Pressable
+            key={s.photo}
+            onPress={() => router.push({ pathname: '/food/[id]', params: { id: s.first.foodId, day: s.day, entry: s.first.id } })}
+            style={({ pressed }) => [styles.scanRow, i < scans.length - 1 && styles.scanLine, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+          >
+            <Image source={{ uri: s.photo }} style={styles.scanThumb} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[T.body, { fontFamily: F.semi }]} numberOfLines={1}>
+                {s.names.join(', ')}
+              </Text>
+              <Text style={T.tiny}>
+                {relativeDay(s.day)} · {s.meal}
+              </Text>
+            </View>
+            <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(s.kcal)} kcal</Text>
+          </Pressable>
+        ))}
+      </Card>
+    </Section>
   );
 }
 
@@ -236,7 +289,7 @@ function WeightCard() {
   const latest = w.length ? w[w.length - 1].kg : p.weightKg;
   const start = w.length ? w[0].kg : p.weightKg;
   const toGo = Math.round((latest - p.targetKg) * 10) / 10;
-  const progress = p.goal === 'maintain' || start === p.targetKg ? 1 : (start - latest) / (start - p.targetKg);
+  const progress = steadyGoal(p.goal) || start === p.targetKg ? 1 : (start - latest) / (start - p.targetKg);
   return (
     <Card onPress={() => router.push('/weight')} accessibilityLabel="Weight">
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
@@ -248,7 +301,7 @@ function WeightCard() {
             <Text style={T.h3}>Weight</Text>
             <Text style={T.small}>
               <Text style={{ fontFamily: F.bold, color: C.ink }}>{fmtKg(latest)} kg</Text>
-              {p.goal === 'maintain' ? '' : ` · goal ${fmtKg(p.targetKg)} kg`}
+              {steadyGoal(p.goal) ? '' : ` · goal ${fmtKg(p.targetKg)} kg`}
             </Text>
           </View>
           {p.goal === 'maintain' ? (
@@ -306,6 +359,9 @@ const styles = StyleSheet.create({
   dayNum: { fontFamily: F.bold, fontSize: 16, color: C.ink },
   dot: { width: 5, height: 5, borderRadius: 3, marginTop: 2 },
   macros: { flexDirection: 'row', gap: 12, marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line2 },
+  scanRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
+  scanLine: { borderBottomWidth: 1, borderBottomColor: C.line2 },
+  scanThumb: { width: 48, height: 48, borderRadius: 12, backgroundColor: C.line2 },
   snap: { marginTop: 14, backgroundColor: C.citrus, borderRadius: R.xl, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 12, overflow: 'hidden' },
   snapRing: { position: 'absolute', right: -40, top: -50, width: 160, height: 160, borderRadius: 80, borderWidth: 2, borderColor: 'rgba(42,33,6,0.1)' },
   snapBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.citrusInk, alignItems: 'center', justifyContent: 'center' },

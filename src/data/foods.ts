@@ -22,7 +22,11 @@ export type Food = {
   /** Created by the user on this phone. */
   custom?: boolean;
   /** Where the values come from, for the open datasets (see README, "Food data"). */
-  src?: 'indb' | 'usda' | 'ai' | 'label';
+  src?: 'indb' | 'usda' | 'ai' | 'label' | 'web';
+  /** For values found online: the site they came from. */
+  from?: string;
+  /** The weight of a serving isn't known, so it's logged by servings only (its unit holds a stand-in 100 g). */
+  noWeight?: boolean;
 };
 
 type Row = [
@@ -255,7 +259,7 @@ export function defaultPortion(f: Food): { unit: Unit; qty: number; grams: numbe
   const unit = f.units[0];
   const byWeight = unit.grams === 1;
   const qty = byWeight ? 100 : 1;
-  return { unit, qty, grams: unit.grams * qty, label: byWeight ? `100 ${f.base}` : `1 ${unit.label}` };
+  return { unit, qty, grams: unit.grams * qty, label: byWeight ? `100 ${f.base}` : `1 ${unit.label.replace(/^1\s+(?=\D)/, '')}` };
 }
 
 export const EXTRA_FOODS: Food[] = (extraRows as unknown as ExtraRow[]).map(extraFood);

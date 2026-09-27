@@ -47,7 +47,7 @@ export default function Foods() {
 
   const header = (
     <View>
-      <Text style={[T.h1, { paddingTop: 14 }]}>Foods</Text>
+      <Text style={[T.h1, { paddingTop: 14 }]}>Food categories</Text>
       <Text style={[T.small, { marginBottom: 12 }]}>{all.length} foods with nutrition per portion</Text>
       <View style={styles.search}>
         <Icon name="magnify" size={22} color={C.ink3} />

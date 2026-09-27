@@ -1,5 +1,5 @@
-import { useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Card, Field, Header, Icon, Notice, Screen, Segmented, useToast } from '@/components/ui';
 import { FOODS, type Category, type Diet, type Food } from '@/data/foods';
@@ -12,23 +12,47 @@ const CAT_ICON: Record<Category, string> = { Food: 'silverware-fork-knife', Drin
 const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
 export default function CustomFood() {
-  const params = useLocalSearchParams<{ name?: string; code?: string }>();
+  const params = useLocalSearchParams<{
+    name?: string;
+    code?: string;
+    meal?: string;
+    day?: string;
+    auto?: string;
+    /** "1": opened from search to log a meal, so go on to logging it after saving. */
+    log?: string;
+    // Values found online, to check before saving.
+    serving?: string;
+    servingLabel?: string;
+    kcal?: string;
+    carb?: string;
+    protein?: string;
+    fat?: string;
+    fibre?: string;
+    sugar?: string;
+    drink?: string;
+    diet?: string;
+    from?: string;
+  }>();
+  const fromWeb = params.kcal != null && params.kcal !== '';
   // Coming from a barcode that wasn't found: save under that barcode so the next scan opens it.
   const code = /^\d{8,14}$/.test(params.code ?? '') ? params.code! : null;
   const { state, saveCustomFood } = useStore();
   const toast = useToast();
   const [name, setName] = useState(params.name ?? '');
-  const [cat, setCat] = useState<Category>('Food');
-  const [diet, setDiet] = useState<Diet>(state.profile?.diet === 'nonveg' ? 'nonveg' : 'veg');
-  const [base, setBase] = useState<'g' | 'ml'>('g');
-  const [servingLabel, setServingLabel] = useState('1 serving');
-  const [serving, setServing] = useState('100');
-  const [kcal, setKcal] = useState('');
-  const [carb, setCarb] = useState('');
-  const [protein, setProtein] = useState('');
-  const [fat, setFat] = useState('');
-  const [fibre, setFibre] = useState('');
-  const [sugar, setSugar] = useState('');
+  const [cat, setCat] = useState<Category>(params.drink === '1' ? 'Drink' : 'Food');
+  const [diet, setDiet] = useState<Diet>(
+    params.diet === 'veg' || params.diet === 'egg' || params.diet === 'nonveg' ? params.diet : state.profile?.diet === 'nonveg' ? 'nonveg' : 'veg',
+  );
+  const [base, setBase] = useState<'g' | 'ml'>(params.drink === '1' ? 'ml' : 'g');
+  const [servingLabel, setServingLabel] = useState(params.servingLabel || '1 serving');
+  // Found online without a weight, or a whole meal: the weight can stay empty.
+  const [serving, setServing] = useState(fromWeb || params.log === '1' ? (params.serving ?? '') : '100');
+  const [kcal, setKcal] = useState(params.kcal ?? '');
+  const [carb, setCarb] = useState(params.carb ?? '');
+  const [protein, setProtein] = useState(params.protein ?? '');
+  const [fat, setFat] = useState(params.fat ?? '');
+  const [fibre, setFibre] = useState(params.fibre ?? '');
+  const [sugar, setSugar] = useState(params.sugar ?? '');
   const [err, setErr] = useState<Record<string, string>>({});
   const [fromLabel, setFromLabel] = useState(false);
   const [ai, setAi] = useState<{ busy?: boolean; msg?: string; ok?: boolean }>({});
@@ -39,16 +63,19 @@ export default function CustomFood() {
     setBase(b);
     setCat(r.isDrink ? 'Drink' : cat === 'Drink' ? 'Food' : cat);
     if (r.diet) setDiet(r.diet);
-    const sv = r.servingGrams ?? 100;
-    setServing(fmtNum(sv));
-    setServingLabel(r.servingGrams ? r.servingLabel || '1 serving' : `100 ${b}`);
-    const perServing = (v: number) => fmtNum(Math.round(v * sv) / 100);
-    setKcal(String(Math.round((r.per100.kcal * sv) / 100)));
-    setCarb(perServing(r.per100.carb));
-    setProtein(perServing(r.per100.protein));
-    setFat(perServing(r.per100.fat));
-    setFibre(r.per100.fibre ? perServing(r.per100.fibre) : '');
-    setSugar(r.per100.sugar ? perServing(r.per100.sugar) : '');
+    // Per serving when the photo gives a serving (with or without its weight), else per 100 g.
+    const sv = r.servingGrams;
+    const v = r.perServing ?? r.per100;
+    if (!v) return;
+    setServing(sv ? fmtNum(sv) : r.perServing ? '' : '100');
+    setServingLabel(r.perServing ? r.servingLabel || '1 serving' : `100 ${b}`);
+    const g1 = (x: number) => fmtNum(Math.round(x * 10) / 10);
+    setKcal(String(Math.round(v.kcal)));
+    setCarb(g1(v.carb));
+    setProtein(g1(v.protein));
+    setFat(g1(v.fat));
+    setFibre(v.fibre ? g1(v.fibre) : '');
+    setSugar(v.sugar ? g1(v.sugar) : '');
     setFromLabel(true);
     setErr({});
   };
@@ -66,7 +93,17 @@ export default function CustomFood() {
     }
   };
 
+  // From "product not found": open the camera straight away (once).
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (params.auto !== 'camera' || autoStarted.current || !aiAvailable()) return;
+    autoStarted.current = true;
+    const t = setTimeout(() => scan('camera'), 350);
+    return () => clearTimeout(t);
+  }, [params.auto]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const clean = (t: string) => t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+  const weighed = serving.trim() !== '';
   const g = num(serving);
   const k = num(kcal);
   const c = num(carb) || 0;
@@ -80,18 +117,21 @@ export default function CustomFood() {
     const nm = name.trim().replace(/\s+/g, ' ');
     if (nm.length < 2) e.name = 'Give the food a name.';
     else if (FOODS.some((x) => x.name.toLowerCase() === nm.toLowerCase())) e.name = `“${nm}” is already in the food list. Search for it instead.`;
-    if (!(g >= 1 && g <= 2000)) e.serving = `Enter a serving between 1 and 2000 ${base}.`;
+    if (weighed && !(g >= 1 && g <= 3000)) e.serving = `Enter a weight between 1 and 3000 ${base}, or leave it empty.`;
     if (!(k >= 0 && k <= 3000)) e.kcal = 'Enter calories for one serving (0–3000).';
     for (const [key, v] of [['carb', carb], ['protein', protein], ['fat', fat], ['fibre', fibre], ['sugar', sugar]] as const) {
       const n = num(v);
       if (v.trim() && !(n >= 0 && n <= 2000)) e[key] = 'Must be a number of grams.';
     }
-    if (g > 0 && c + p + f > g) e.carb = `Carbs, protein and fat add up to more than the ${fmtNum(g)} ${base} serving.`;
+    if (weighed && g > 0 && c + p + f > g) e.carb = `Carbs, protein and fat add up to more than the ${fmtNum(g)} ${base} serving.`;
     if ((num(sugar) || 0) > c && c > 0) e.sugar = 'Sugar can’t be more than total carbs.';
     setErr(e);
     if (Object.keys(e).length) return;
 
-    const per100 = (v: number) => Math.round((v / g) * 1000) / 10;
+    // Without a weight, a serving stands in as 100 g, so the values per 100 g are the values per serving.
+    const gw = weighed ? g : 100;
+    const per100 = (v: number) => Math.round((v / gw) * 1000) / 10;
+    const unitName = servingLabel.trim().replace(/^1\s+(?=\D)/, '').slice(0, 24) || 'serving';
     const slug = nm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'food';
     let id = code ? `bc-${code}` : `my-${slug}`;
     for (let i = 2; !code && state.custom[id]; i++) id = `my-${slug}-${i}`;
@@ -104,30 +144,37 @@ export default function CustomFood() {
       diet,
       base,
       gi: null,
-      n: { kcal: Math.round((k / g) * 100), carb: per100(c), protein: per100(p), fat: per100(f), fibre: per100(num(fibre) || 0), sugar: per100(num(sugar) || 0) },
-      units: [
-        { id: 'serving', label: servingLabel.trim().slice(0, 24) || 'serving', grams: g },
-        { id: base, label: base === 'ml' ? 'ml' : 'gram', grams: 1 },
-      ],
+      n: { kcal: Math.round((k / gw) * 100), carb: per100(c), protein: per100(p), fat: per100(f), fibre: per100(num(fibre) || 0), sugar: per100(num(sugar) || 0) },
+      units: weighed ? [{ id: 'serving', label: unitName, grams: g }, { id: base, label: base === 'ml' ? 'ml' : 'gram', grams: 1 }] : [{ id: 'serving', label: unitName, grams: 100 }],
       custom: true,
-      ...(fromLabel || code ? { src: 'label' as const } : {}),
+      ...(fromLabel || code ? { src: 'label' as const } : fromWeb ? { src: 'web' as const, ...(params.from ? { from: params.from.slice(0, 60) } : {}) } : {}),
+      ...(weighed ? {} : { noWeight: true }),
     };
     saveCustomFood(food);
     toast(code ? `Saved ${nm}. Scanning this barcode now opens it.` : `Saved ${nm}. It now shows up in search.`);
-    goBack();
+    // A scanned packet, or a meal from search: go straight on to logging it.
+    if (code || params.log === '1') router.replace({ pathname: '/food/[id]', params: { id, meal: params.meal ?? '', day: params.day ?? '' } });
+    else goBack();
   };
 
   return (
     <Screen edges={['top', 'bottom']}>
-      <Header title="Custom food" onBack={() => goBack()} />
+      <Header title={fromWeb ? 'Check the values' : params.log === '1' ? 'Enter the values' : 'Custom food'} onBack={() => goBack()} />
       <View style={{ gap: 14, marginTop: 6 }}>
-        {aiAvailable() ? (
+        {fromWeb ? (
+          <Notice tone="coach" icon="web">
+            {`Found online${params.from ? ` (${params.from})` : ''}. Check them against the menu or pack, change anything that’s off, then save.`}
+          </Notice>
+        ) : params.log === '1' ? (
+          <Text style={T.small}>For a restaurant meal, a delivery order or a packet: type what its menu or label says for one serving. You’ll log it next.</Text>
+        ) : null}
+        {aiAvailable() && !fromWeb ? (
           <Card style={{ gap: 10, backgroundColor: C.coachSoft }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Icon name="text-recognition" size={22} color={C.coach} />
-              <Text style={[T.h3, { flex: 1 }]}>Fill it in from the label</Text>
+              <Text style={[T.h3, { flex: 1 }]}>Fill it in from a photo</Text>
             </View>
-            <Text style={T.small}>Photograph the nutrition table on the pack. AI reads it and fills in the form for you to check.</Text>
+            <Text style={T.small}>Photograph the nutrition table on the pack or box, or choose a screenshot of the brand’s website or delivery app. AI reads it and fills in the form for you to check.</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button label="Take photo" icon="camera-outline" small style={{ flex: 1 }} loading={ai.busy} onPress={() => scan('camera')} />
               <Button label="Choose photo" icon="image-outline" kind="ghost" small style={{ flex: 1 }} disabled={ai.busy} onPress={() => scan('gallery')} />
@@ -137,10 +184,10 @@ export default function CustomFood() {
                 {ai.msg}
               </Notice>
             ) : null}
-            <Text style={T.tiny}>The photo is sent to Google Gemini to read the label and isn’t kept.</Text>
+            <Text style={T.tiny}>The photo is sent to Google Gemini to read the values and isn’t kept.</Text>
           </Card>
         ) : null}
-        <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. Mom’s moong dal chilla" maxLength={60} error={err.name} autoCapitalize="sentences" />
+        <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. Mani’s chicken dum biryani" maxLength={60} error={err.name} autoCapitalize="sentences" />
         <View style={{ gap: 6 }}>
           <Text style={[T.small, { fontFamily: F.semi }]}>Category</Text>
           <Segmented options={['Food', 'Drink', 'Dessert', 'Other'] as const} value={cat} onChange={(v) => (setCat(v), setBase(v === 'Drink' ? 'ml' : 'g'))} />
@@ -152,13 +199,18 @@ export default function CustomFood() {
 
         <Card style={{ gap: 12 }}>
           <Text style={T.h3}>One serving</Text>
-          <Field label="Serving name" value={servingLabel} onChangeText={setServingLabel} placeholder="e.g. 1 bowl, 2 pieces" maxLength={24} />
+          <Field label="Serving name" value={servingLabel} onChangeText={setServingLabel} placeholder="e.g. 1 box, 1 plate, 2 pieces" maxLength={24} />
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-end' }}>
-            <Field style={{ flex: 1 }} label="Serving size" value={serving} onChangeText={(t) => setServing(clean(t))} keyboardType="decimal-pad" suffix={base} error={err.serving} maxLength={6} />
+            <Field style={{ flex: 1 }} label="Weight (optional)" value={serving} onChangeText={(t) => setServing(clean(t))} keyboardType="decimal-pad" suffix={base} error={err.serving} maxLength={6} placeholder="e.g. 450" />
             <View style={{ width: 110, paddingBottom: err.serving ? 24 : 0 }}>
               <Segmented options={['g', 'ml'] as const} value={base} onChange={setBase} />
             </View>
           </View>
+          <Text style={T.tiny}>
+            {weighed
+              ? 'With a weight you can also log it in grams, e.g. if you ate part of it.'
+              : 'Don’t know the weight? Leave it empty: you’ll log it by servings (half is 0.5), and the calories are exactly what you enter.'}
+          </Text>
         </Card>
 
         <Card style={{ gap: 12 }}>

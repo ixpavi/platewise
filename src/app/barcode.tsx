@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Field, Icon, LightStatusBar, Notice, RoundButton, Sheet, tap } from '@/components/ui';
+import { aiAvailable } from '@/lib/ai';
 import { lookupBarcode, LookupError, productCodeFromScan, validBarcode } from '@/lib/barcode';
 import { dayKey } from '@/lib/dates';
 import { goBack } from '@/lib/nav';
@@ -154,8 +155,12 @@ export default function Barcode() {
           <View style={styles.card}>
             {result.k === 'notfound' ? (
               <>
-                <Text style={T.h3}>We don’t know this product yet</Text>
-                <Text style={T.small}>{`Barcode ${result.code} isn’t in the Open Food Facts database. Add it yourself from the pack’s nutrition label.`}</Text>
+                <Text style={T.h3}>Nutrition information for this food is currently unavailable.</Text>
+                <Text style={T.small}>
+                  {aiAvailable()
+                    ? `Barcode ${result.code} isn’t in the Open Food Facts database yet. Photograph the nutrition label and AI fills it in. After that, scanning this packet opens it straight away.`
+                    : `Barcode ${result.code} isn’t in the Open Food Facts database. Add it yourself from the pack’s nutrition label.`}
+                </Text>
               </>
             ) : result.k === 'nodata' ? (
               <>
@@ -170,11 +175,27 @@ export default function Barcode() {
             <View style={{ gap: 8, marginTop: 6 }}>
               {result.k === 'error' ? <Button label="Try again" icon="refresh" small onPress={() => ((lock.current = false), lookup(result.code))} /> : null}
               {result.k !== 'error' ? (
-                <Button label="Add it from the label" icon="plus" small onPress={() => router.replace({ pathname: '/custom-food', params: { name: result.k === 'nodata' ? result.name : '', code: result.code } })} />
+                <>
+                  {aiAvailable() ? (
+                    <Button
+                      label="Photograph the label"
+                      icon="camera-outline"
+                      small
+                      onPress={() => router.replace({ pathname: '/custom-food', params: { name: result.k === 'nodata' ? result.name : '', code: result.code, meal, day, auto: 'camera' } })}
+                    />
+                  ) : null}
+                  <Button
+                    label={aiAvailable() ? 'Type it in yourself' : 'Add it from the label'}
+                    icon={aiAvailable() ? 'keyboard-outline' : 'plus'}
+                    kind={aiAvailable() ? 'ghost' : 'primary'}
+                    small
+                    onPress={() => router.replace({ pathname: '/custom-food', params: { name: result.k === 'nodata' ? result.name : '', code: result.code, meal, day } })}
+                  />
+                </>
               ) : null}
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button label="Scan another" kind="ghost" small style={{ flex: 1 }} onPress={again} />
-                <Button label="Search foods" kind="ghost" small style={{ flex: 1 }} onPress={() => router.replace({ pathname: '/log', params: { meal, day } })} />
+                <Button label="Select another food" kind="ghost" small style={{ flex: 1 }} onPress={() => router.replace({ pathname: '/log', params: { meal, day } })} />
               </View>
             </View>
           </View>

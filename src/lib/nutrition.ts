@@ -2,7 +2,9 @@ import type { Food, Nutrients } from '@/data/foods';
 
 export type Gender = 'Female' | 'Male' | 'Other';
 export type ActivityLevel = 'Sedentary' | 'Light' | 'Moderate' | 'Active';
-export type Goal = 'lose' | 'maintain' | 'gain';
+export type Goal = 'lose' | 'maintain' | 'gain' | 'fitness';
+/** Goals that keep your weight where it is (no target weight). */
+export const steadyGoal = (g: Goal) => g === 'maintain' || g === 'fitness';
 export type Profile = {
   name: string;
   gender: Gender;
@@ -43,7 +45,8 @@ export function targets(p: Profile | null, override?: number | null): Targets {
   }
   if (override && override >= 800 && override <= 6000) kcal = override;
   kcal = Math.round(kcal / 10) * 10;
-  const perKg = p.goal === 'maintain' ? 1.0 : 1.4;
+  // Protein per kg of body weight: more when losing, gaining or training.
+  const perKg = p.goal === 'maintain' ? 1.0 : p.goal === 'fitness' ? 1.6 : 1.4;
   const protein = Math.round(p.weightKg * perKg);
   const fat = Math.round((kcal * 0.28) / 9);
   const carb = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));

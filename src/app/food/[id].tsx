@@ -17,6 +17,7 @@ import { goBack } from '@/lib/nav';
 function sourceNote(f: Food): string {
   if (f.src === 'ai') return 'Estimated by AI (Gemini) from the name. Real values depend on the recipe, so check a label if you have one.';
   if (f.src === 'label') return 'From the pack’s nutrition label.';
+  if (f.src === 'web') return `Published values found online${f.from ? ` (${f.from})` : ''} by AI with Google Search. Compare with the brand’s menu if something looks off.`;
   if (f.src === 'indb') return 'From the Indian Nutrient Databank (INDB), for a typical home recipe.';
   if (f.src === 'usda') return 'From USDA FoodData Central (FNDDS).';
   if (f.id.startsWith('bc-')) return 'From Open Food Facts; check against the pack.';
@@ -25,15 +26,19 @@ function sourceNote(f: Food): string {
 }
 
 export default function FoodDetail() {
-  const params = useLocalSearchParams<{ id: string; day?: string; meal?: string; entry?: string }>();
+  // view: opened from a scan result to see a food's full nutrition, without logging it here.
+  const params = useLocalSearchParams<{ id: string; day?: string; meal?: string; entry?: string; view?: string; unit?: string; qty?: string }>();
+  const viewOnly = params.view === '1';
   const day = params.day || dayKey();
   const { food, day: getDay, addEntries, updateEntry, removeEntry, restoreEntries, toggleFav, state } = useStore();
   const toast = useToast();
   const f = food(params.id);
   const entry = params.entry ? getDay(day).food.find((e) => e.id === params.entry) : undefined;
-  const [unitId, setUnitId] = useState(entry?.unitId ?? f?.units[0]?.id ?? 'g');
+  const presetUnit = f?.units.find((u) => u.id === params.unit);
+  const presetQty = Number(params.qty);
+  const [unitId, setUnitId] = useState(entry?.unitId ?? presetUnit?.id ?? f?.units[0]?.id ?? 'g');
   // A food with no household unit starts at 100 g, not 1 g.
-  const [qty, setQty] = useState(entry?.qty ?? (f?.units[0]?.grams === 1 ? 100 : 1));
+  const [qty, setQty] = useState(entry?.qty ?? (presetUnit && presetQty > 0 ? presetQty : f?.units[0]?.grams === 1 ? 100 : 1));
   const myMeals = useMeals();
   const [meal, setMeal] = useState<Meal>(entry?.meal ?? ((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : myMeals.now));
   const [qtyText, setQtyText] = useState<string | null>(null);
@@ -105,7 +110,7 @@ export default function FoodDetail() {
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['top', 'bottom']}>
       <View style={{ paddingHorizontal: 18 }}>
         <Header
-          title={entry ? 'Edit entry' : 'Add food'}
+          title={entry ? 'Edit entry' : viewOnly ? 'Food detail' : 'Add food'}
           subtitle={isToday(day) ? undefined : relativeDay(day)}
           onBack={() => goBack()}
           right={<RoundButton icon={fav ? 'star' : 'star-outline'} color={fav ? C.warn : C.ink} label={fav ? 'Remove favourite' : 'Add to favourites'} onPress={() => toggleFav(f.id)} />}
@@ -121,7 +126,16 @@ export default function FoodDetail() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <DietMark diet={f.diet} />
                 <Text style={T.small}>{f.cat}</Text>
-                {f.id.startsWith('bc-') ? <Pill label="Packaged" color={C.coach} bg={C.coachSoft} /> : f.src === 'ai' ? <Pill label="AI estimate" color={C.coach} bg={C.coachSoft} /> : f.custom ? <Pill label="Your food" color={C.coach} bg={C.coachSoft} /> : null}
+                {f.gi != null ? <Pill label={`GI: ${giBand(f.gi)}`} color={f.gi <= 55 ? C.good : f.gi < 70 ? C.warn : C.bad} bg={C.line2} /> : null}
+                {f.id.startsWith('bc-') ? (
+                  <Pill label="Packaged" color={C.coach} bg={C.coachSoft} />
+                ) : f.src === 'ai' ? (
+                  <Pill label="AI estimate" color={C.coach} bg={C.coachSoft} />
+                ) : f.src === 'web' ? (
+                  <Pill label="Found online" color={C.coach} bg={C.coachSoft} />
+                ) : f.custom ? (
+                  <Pill label="Your food" color={C.coach} bg={C.coachSoft} />
+                ) : null}
               </View>
             </View>
             <Pressable onPress={() => setScoreInfo(true)} accessibilityRole="button" accessibilityLabel="What is the health score">
@@ -153,14 +167,14 @@ export default function FoodDetail() {
                 />
                 <Text style={T.small}>
                   {unitLabel(unit.label, liveQty)}
-                  {unit.grams !== 1 ? ` · ${fmt(grams)} ${f.base}` : ''}
+                  {unit.grams !== 1 && !f.noWeight ? ` · ${fmt(grams)} ${f.base}` : ''}
                 </Text>
               </View>
               <RoundButton icon="plus" label="More" bg={C.line2} onPress={() => (setQtyText(null), setQtySafe(liveQty + qtyStep))} />
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {f.units.map((u) => (
-                <Chip key={u.id} label={u.grams === 1 ? (f.base === 'ml' ? 'ml' : 'grams') : `${u.label} (${u.grams}${f.base})`} active={u.id === unitId} onPress={() => changeUnit(u.id)} tone={C.brand} />
+                <Chip key={u.id} label={u.grams === 1 ? (f.base === 'ml' ? 'ml' : 'grams') : f.noWeight ? u.label : `${u.label} (${u.grams}${f.base})`} active={u.id === unitId} onPress={() => changeUnit(u.id)} tone={C.brand} />
               ))}
             </View>
             {!byWeight && gramUnit ? (
@@ -176,7 +190,7 @@ export default function FoodDetail() {
                 <Text style={[T.small, { color: C.brand, fontFamily: F.semi, flex: 1 }]}>Cooked it at home? Weigh your portion and type the {f.base === 'ml' ? 'ml' : 'grams'}</Text>
               </Pressable>
             ) : (
-              <Text style={T.tiny}>Tap the number to type the exact weight of your portion.</Text>
+              <Text style={T.tiny}>{f.noWeight ? 'Ate part of it or shared it? Type 0.5 for half.' : 'Tap the number to type the exact weight of your portion.'}</Text>
             )}
           </Card>
 
@@ -205,29 +219,33 @@ export default function FoodDetail() {
             </View>
           </Card>
 
-          <View style={{ marginTop: 12 }}>
-            <Notice icon={after > budget ? 'alert-circle-outline' : 'check-circle-outline'} tone={after > budget ? 'warn' : 'info'}>
-              <Text style={T.small}>
-                {entry ? 'With this change' : 'After this'}, {isToday(day) ? 'today' : relativeDay(day).toLowerCase()} reaches <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(after)}</Text> of{' '}
-                <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(budget)}</Text> kcal{after > budget ? `, ${kcalStr(after - budget)} over.` : `, ${kcalStr(budget - after)} left.`}
-              </Text>
-            </Notice>
-          </View>
-
-          <Text style={[T.label, { marginTop: 20, marginBottom: 8 }]}>Meal</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {myMeals.options(meal).map((m) => (
-              <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
-            ))}
-          </ScrollView>
+          {!viewOnly ? (
+            <>
+              <View style={{ marginTop: 12 }}>
+                <Notice icon={after > budget ? 'alert-circle-outline' : 'check-circle-outline'} tone={after > budget ? 'warn' : 'info'}>
+                  <Text style={T.small}>
+                    {entry ? 'With this change' : 'After this'}, {isToday(day) ? 'today' : relativeDay(day).toLowerCase()} reaches <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(after)}</Text> of{' '}
+                    <Text style={{ fontFamily: F.bold, color: C.ink }}>{kcalStr(budget)}</Text> kcal{after > budget ? `, ${kcalStr(after - budget)} over.` : `, ${kcalStr(budget - after)} left.`}
+                  </Text>
+                </Notice>
+              </View>
+              <Text style={[T.label, { marginTop: 20, marginBottom: 8 }]}>Meal</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {myMeals.options(meal).map((m) => (
+                  <Chip key={m} label={m} active={m === meal} onPress={() => setMeal(m)} tone={C.brand} />
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
           <Text style={[T.tiny, { marginTop: 18 }]}>
-            Values per 100 {f.base}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {sourceNote(f)}
+            Values per {f.noWeight ? unitLabel(f.units[0].label, 1) : `100 ${f.base}`}: {f.n.kcal} kcal, carbs {f.n.carb} g, protein {f.n.protein} g, fat {f.n.fat} g. {sourceNote(f)}
           </Text>
         </ScrollView>
 
         <View style={styles.bottom}>
-          {entry ? <RoundButton icon="trash-can-outline" label="Remove entry" bg="#FBE4DF" color={C.bad} size={52} onPress={remove} /> : null}
-          <Button label={entry ? 'Save changes' : `Add to ${meal} · ${kcalStr(n.kcal)} kcal`} onPress={save} style={{ flex: 1 }} disabled={grams <= 0} />
+          {viewOnly ? <Button label="Back to result" icon="arrow-left" kind="ghost" onPress={() => goBack()} style={{ flex: 1 }} /> : null}
+          {viewOnly ? null : entry ? <RoundButton icon="trash-can-outline" label="Remove entry" bg="#FBE4DF" color={C.bad} size={52} onPress={remove} /> : null}
+          {viewOnly ? null : <Button label={entry ? 'Save changes' : `Add to ${meal} · ${kcalStr(n.kcal)} kcal`} onPress={save} style={{ flex: 1 }} disabled={grams <= 0} />}
         </View>
       </KeyboardAvoidingView>
 

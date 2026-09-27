@@ -34,7 +34,7 @@ export default function Me() {
         resetAll();
       } else logOut();
       setConfirm(null);
-      router.replace('/welcome');
+      router.replace({ pathname: '/auth', params: { mode: 'login' } });
     } finally {
       setBusy(false);
     }
@@ -71,7 +71,14 @@ export default function Me() {
   const b = bmi(p);
   const band = bmiBand(b);
   const toneColor = { good: C.good, warn: C.warn, bad: C.bad }[band.tone];
-  const goalText = p.goal === 'lose' ? `Lose ${fmtKg(p.weightKg - p.targetKg)} kg · ${p.pace} kg/week` : p.goal === 'gain' ? `Gain ${fmtKg(p.targetKg - p.weightKg)} kg · ${p.pace} kg/week` : 'Eat healthier, keep weight steady';
+  const goalText =
+    p.goal === 'lose'
+      ? `Weight loss · ${fmtKg(p.weightKg - p.targetKg)} kg at ${p.pace} kg/week`
+      : p.goal === 'gain'
+        ? `Weight gain · ${fmtKg(p.targetKg - p.weightKg)} kg at ${p.pace} kg/week`
+        : p.goal === 'fitness'
+          ? 'Fitness · steady weight, more protein'
+          : 'Healthy eating · steady weight';
   const loggedDays = Object.values(state.days).filter((d) => d.food.length).length;
   const entries = Object.values(state.days).reduce((s, d) => s + d.food.length, 0);
 
@@ -99,9 +106,18 @@ export default function Me() {
 
       <AccountCard pending={pending} lastSynced={sync.lastSynced} />
 
+      <Section title="Your details" action="Edit" onAction={() => router.push({ pathname: '/onboarding', params: { edit: '1' } })}>
+        <Card style={{ gap: 14 }}>
+          <Row icon="account-outline" label="Name" value={p.name} />
+          <Row icon="human-male-height" label="Height" value={`${p.heightCm} cm`} />
+          <Row icon="gender-male-female" label="Gender" value={p.gender} />
+          <Row icon="cake-variant-outline" label="Age" value={`${p.age} years`} />
+          <Row icon="flag-outline" label="Goal" value={goalText} />
+        </Card>
+      </Section>
+
       <Section title="Your plan" action="Edit" onAction={() => router.push({ pathname: '/onboarding', params: { edit: '1' } })}>
         <Card style={{ gap: 14 }}>
-          <Row icon="flag-outline" label="Goal" value={goalText} />
           <Row icon="fire" label="Daily budget" value={`${kcalStr(t.kcal)} kcal${state.settings.calorieOverride ? ' (custom)' : ''}`} />
           <Row icon="chart-donut" label="Macros" value={`C ${t.carb} g · P ${t.protein} g · F ${t.fat} g`} />
           <Row icon="walk" label="Activity" value={`${p.activity} · ${ACTIVITY_HINT[p.activity].toLowerCase()}`} />

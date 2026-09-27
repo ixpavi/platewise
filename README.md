@@ -1,10 +1,12 @@
 # Platewise
 
-A food calorie counter built for Indian home food. Scan the barcode or QR code on a packet,
-search over 6,000 Indian and international foods with portions in katoris, rotis and pieces, or
-snap your plate and tap what's on it. Cooked it yourself? Weigh your portion and type the exact
-grams. Eat twice a day? Pick your own meals, like brunch and dinner. A simple weight log shows
-how you're moving towards your goal.
+A food recognition and calorie counting app built for Indian home food. **Take or upload a photo
+of your food and Platewise identifies it and shows its nutrition**: calories, kilojoules, carbs,
+protein, fat, fibre, sugar, glycemic index and serving size. You can also scan the barcode or QR
+code on a packet, or search over 6,000 Indian and international foods with portions in katoris,
+rotis and pieces. Cooked it yourself? Weigh your portion and type the exact grams. Eat twice a
+day? Pick your own meals, like brunch and dinner. A simple weight log shows how you're moving
+towards your goal.
 
 Built with Expo (React Native). Runs on **Android**, **iOS** and in a **web browser**. Works fully
 offline with no account, and can optionally sync to your own free Firebase project.
@@ -20,39 +22,85 @@ offline with no account, and can optionally sync to your own free Firebase proje
 
 ## Contents
 
-1. [Features](#features)
-2. [Quick start: run it in 5 minutes](#quick-start-run-it-in-5-minutes)
-3. [Optional: cloud accounts, sync and Google sign-in](#optional-cloud-accounts-sync-and-google-sign-in-firebase)
-4. [Build an installable Android app (APK)](#build-an-installable-android-app-apk)
-5. [Run on an Android emulator](#run-on-an-android-emulator)
-6. [iPhone and iOS](#iphone-and-ios)
-7. [Project structure](#project-structure)
-8. [Commands](#commands)
-9. [Where your data goes](#where-your-data-goes)
-10. [Food data](#food-data)
-11. [Adding automatic food recognition](#adding-automatic-food-recognition)
-12. [Troubleshooting](#troubleshooting)
-13. [Contributing](#contributing)
-14. [License](#license)
+1. [Use it yourself: the short version](#use-it-yourself-the-short-version)
+2. [Features](#features)
+3. [Scope checklist](#scope-checklist)
+4. [Quick start: run it in 5 minutes](#quick-start-run-it-in-5-minutes)
+5. [Optional: cloud accounts, sync, Google sign-in and AI](#optional-cloud-accounts-sync-google-sign-in-and-ai-firebase)
+6. [Build an installable Android app (APK)](#build-an-installable-android-app-apk)
+7. [Run on an Android emulator](#run-on-an-android-emulator)
+8. [iPhone and iOS](#iphone-and-ios)
+9. [Project structure](#project-structure)
+10. [Commands](#commands)
+11. [Where your data goes](#where-your-data-goes)
+12. [Food data](#food-data)
+13. [How food recognition works](#how-food-recognition-works)
+14. [Troubleshooting](#troubleshooting)
+15. [Contributing](#contributing)
+16. [License](#license)
+
+## Use it yourself: the short version
+
+Everything below is explained step by step further down. In short:
+
+1. **Install** [Git](https://git-scm.com/downloads), [Node.js](https://nodejs.org) (LTS) and, on your
+   phone, **Expo Go** ([Android](https://play.google.com/store/apps/details?id=host.exp.exponent) ·
+   [iPhone](https://apps.apple.com/app/expo-go/id982107779)).
+2. **Download and install:** `git clone https://github.com/ixpavi/platewise.git`, then `cd platewise`
+   and `npm install`.
+3. **Run it:** `npx expo start`, then scan the QR code with Expo Go (or press `w` for the browser).
+   Pick **Use without an account** and you can search, scan barcodes and log food straight away.
+4. **For photo recognition, cloud accounts and sync**, create your own free Firebase project and
+   put its settings in a `.env` file ([steps 1 to 5](#step-1-create-a-firebase-project)), then turn on
+   **AI Logic** ([step 7](#step-7-ai-features-photo-recognition-and-helpers)). Each copy of the app uses its
+   own Firebase project; this repository contains no keys.
+5. **For a real app on your phone**, build an APK ([Windows script or Gradle](#build-an-installable-android-app-apk))
+   and sign it with your own key before sharing it.
 
 ## Features
 
 | Area | What you get |
 | --- | --- |
-| Onboarding | 8 short steps: goal, age, height, weight, target, activity, diet, meals. Builds a daily calorie budget with the Mifflin–St Jeor equation and never goes below a safe minimum. |
+| Splash and login | Splash screen with the logo, name and "Know what you eat", then Home if you're logged in, or the welcome and login screens: email and password, create account, forgot password, or Google. |
+| Onboarding | 8 short steps: goal (weight loss, healthy eating, weight gain or fitness), name, sex and age, height, weight, target, activity, diet, meals. Builds a daily calorie budget with the Mifflin–St Jeor equation and never goes below a safe minimum. |
 | Your meals | Pick the meals you actually eat: 3 meals and 2 snacks, 3 meals, brunch and dinner, or any mix (breakfast, brunch, lunch, snacks, dinner, late-night snack). Home, the budget split and reminders follow your choice. |
-| Home | Week strip, calorie ring (eaten, budget, left), carbs / protein / fat / fibre bars, five meals, weight, daily tip. |
+| Home | "Welcome, name", a large **Scan your food** card, recent scans, week strip, calorie ring (eaten, budget, left), carbs / protein / fat / fibre bars, your meals, weight, daily tip. |
+| Scan food (recognition) | Take a photo or upload one → preview (**Analyse food** / **Retake**) → "Identifying your food…" → nutrition result. Gemini names each food and its portion, the food database gives the nutrition: calories, kJ, carbs, protein, fat, fibre, sugar, glycemic index (low / medium / high), serving size and category. Tap a food for its full detail. Adjust portions, remove or add foods, then log it, **Scan again** or go **Back to home**. The photo is saved with the meal. Without AI set up, you tap the foods yourself. |
+| Categories | Food, Drink, Dessert and Other, each with its foods. |
 | Barcode and QR scanner | Scan an EAN / UPC barcode, or the GS1 QR code on newer packs (or type the digits), to look up a packaged food on Open Food Facts. |
-| Food search | Over 6,000 foods: 139 hand-picked everyday foods, about 900 Indian recipes (INDB) and about 5,000 international foods as eaten (USDA). Typo-tolerant search, Hindi names, veg / egg / non-veg marks, favourites, custom foods from a label or recipe, health score. |
+| Food search | Over 6,000 foods: 139 hand-picked everyday foods, about 900 Indian recipes (INDB) and about 5,000 international foods as eaten (USDA). Typo-tolerant search, Hindi names, veg / egg / non-veg marks, favourites, health score. |
+| Your own foods | Type in the values from a label, a restaurant menu or a delivery app for one serving. The weight is optional: without it you log by servings, and the calories are exactly what you entered. Handy for branded dishes (a delivery biryani can have far more calories than a home-style one). |
 | Portions | Household units (katori, roti, piece, cup) or the exact weight in grams or ml. Calories update as you type. |
-| Snap a meal | Take or pick a photo, tap the foods on the plate (suggestions come from what you usually eat at that meal), adjust portions, log. The photo is saved with the meal. |
 | Weight | A simple weight log with progress towards your goal and a trend chart. |
 | Progress | 7 and 30 day calorie charts against your budget, macro averages, weight trend, top calorie sources. |
 | Reminders | Reminders for your main meals at times you choose. Scheduled on the phone, no server. |
+| Profile | Name, height, gender, age and goal, your calorie plan and BMI, settings, and **Log out** (back to the login screen). |
 | Accounts | "This phone only" accounts (no internet needed), or cloud accounts with email / password or Google that sync across phones and the web. |
-| AI helpers (optional) | Photograph a packet's nutrition label to fill in a new food, or get an AI estimate for a dish the database doesn't have. Uses Gemini through Firebase AI Logic, so no AI key is stored in the app. See [step 7](#step-7-optional-ai-features). |
+| AI helpers | Food recognition (above), reading a nutrition label, menu or screenshot to fill in a new food, finding the values a brand or restaurant publishes (Google Search), and estimating a dish the database doesn't have. Uses Gemini through Firebase AI Logic, so no AI key is stored in the app. See [step 7](#step-7-ai-features-photo-recognition-and-helpers). |
+| Errors handled | "We couldn't identify this food" (try again or select the food manually), "Please check your internet connection", "Nutrition information for this food is currently unavailable" (select another food), and camera permission requests. |
 
-Photo logging itself doesn't use AI: you tap the foods on your plate. See [Adding automatic food recognition](#adding-automatic-food-recognition).
+## Scope checklist
+
+How the app covers the project's scope and framework document.
+
+| Requirement | Where it is |
+| --- | --- |
+| Bottom navigation: Home, Scan Food, Categories, Profile | Tab bar: Home, Progress, **Scan** (centre), Categories, Profile. Hold Scan for more ways to log. |
+| Screen 1, splash | `src/app/index.tsx`: logo, name, "Know what you eat"; then Home if logged in, otherwise login |
+| Screen 2, login | `src/app/welcome.tsx`, `src/app/auth.tsx`: email and password, create account, forgot password |
+| Screen 3, home | `src/app/(tabs)/index.tsx`: welcome, **Scan your food** card, recent scans |
+| Screens 4 and 5, scan food and camera | `src/app/snap.tsx`: take photo or upload photo, preview with **Analyse food** and **Retake** |
+| Screen 6, recognition | `src/app/snap.tsx` and `src/lib/recognition.ts`: "Identifying your food…", image → food names → food database → nutrition |
+| Screen 7, nutrition result | `src/app/snap.tsx`: calories, kJ, carbs, protein, fat, fibre, sugar, GI, serving size, category; **Scan again**, **Select another food**, **Back to home** |
+| Screen 8, food detail | `src/app/food/[id].tsx`: name, category, serving size, calories, kJ, protein, carbs, fat, fibre, sugar, GI, health score |
+| Screen 9, profile | `src/app/(tabs)/profile.tsx`: name, height, gender, goal (weight loss, weight gain, healthy eating, fitness) |
+| Logout | Profile → Log out → login screen |
+| FR-01 to FR-09 | Login, profile, image capture, image upload, recognition, nutrition lookup, nutrition display, scan again, logout: all of the above |
+| Food categories | Food, Drink, Dessert, Other (`src/data/foods.ts`, Categories tab) |
+| Database | Firebase Authentication (users), Firestore (profile, goal, food logs with scan photos, your own foods), food database of over 6,000 foods in the app |
+| Recognition layer kept separate | `src/lib/recognition.ts` (the `Recognizer` interface): swap the model or API without touching the screens |
+| Error handling | Food not recognised, no internet, nutrition unavailable, camera permission |
+| Technology | React Native (Expo), Firebase, Firestore, Google Gemini through Firebase AI Logic |
 
 ## Quick start: run it in 5 minutes
 
@@ -111,15 +159,17 @@ npx expo start --tunnel
 1. Tap **Get started**.
 2. Tap **Use without an account (this phone only)**, enter a name, email and password. Nothing leaves the phone.
 3. Answer the 8 onboarding questions to get your calorie plan.
-4. Want to see the charts filled in? Go to **Me → Meals, budget and reminders → Load a sample week**.
+4. Want to see the charts filled in? Go to **Profile → Meals, budget and reminders → Load a sample week**.
 
-Everything works in this mode except cloud sync and Google sign-in, which need the optional
-Firebase setup below. The barcode scanner needs an internet connection.
+Everything works in this mode except AI food recognition, cloud sync and Google sign-in, which
+need the Firebase setup below. Without it, **Scan food** still works: after the photo you tap the
+foods yourself. The barcode scanner needs an internet connection.
 
-## Optional: cloud accounts, sync and Google sign-in (Firebase)
+## Optional: cloud accounts, sync, Google sign-in and AI (Firebase)
 
-With Firebase set up, people can create an account with email or Google, and their logs sync
-between phones and the web app. Firebase's free **Spark** plan is enough. It takes about 15 minutes.
+With Firebase set up, people can create an account with email or Google, their logs sync between
+phones and the web app, and the AI features (food recognition from photos) work. Firebase's free
+**Spark** plan is enough. It takes about 15 minutes.
 
 ### Step 1: create a Firebase project
 
@@ -242,13 +292,20 @@ Firestore rules from step 4. `.env` is still kept out of git so each fork uses i
 Never put a Firebase *service account* key or a Gemini API key in this app: anyone with the APK
 could extract it.
 
-### Step 7 (optional): AI features
+### Step 7: AI features (photo recognition and helpers)
 
-Two AI helpers use Google Gemini through [Firebase AI Logic](https://firebase.google.com/docs/ai-logic),
+The AI features use Google Gemini through [Firebase AI Logic](https://firebase.google.com/docs/ai-logic),
 so the app never contains an AI key:
 
+- **Identify food in a photo:** on **Scan food**, tap **Analyse food**. Gemini names each food and
+  estimates its portion; the app looks the names up in its food database for the nutrition.
 - **Read a label:** on the custom food screen (and when a scanned barcode isn't found), photograph
-  the nutrition table on a packet and AI fills in the form for you to check.
+  the nutrition table on a packet or box, or pick a screenshot of a brand's website or delivery
+  app. AI fills in the form for you to check.
+- **Find it online:** type a branded or restaurant dish (for example "Behrouz Lazeez Bhuna Murgh")
+  and tap **Find online**. Gemini searches Google for the values the brand publishes and shows them
+  with their sources and Google's search suggestions, which Google requires apps to display. You
+  check them, then save. These foods are marked "Found online".
 - **Estimate a dish:** when a search finds nothing, AI estimates typical nutrition for what you
   typed. These foods are marked "AI estimate".
 
@@ -261,6 +318,18 @@ To turn them on:
 
 No rebuild is needed: the AI buttons appear whenever Firebase is set up, and they start working as
 soon as AI Logic is on. Until then they show "AI isn't switched on for this app yet".
+
+**Find online needs the Blaze (pay-as-you-go) plan.** Google Search isn't part of Gemini's free
+tier, so on the Spark plan the app says so and offers the photo and typing options instead. On
+Blaze, Gemini 3 models include 5,000 Google searches a month at no charge (one lookup can run a
+few), then $14 per 1,000, plus normal Gemini usage, which is a fraction of a cent per lookup. Set a
+[budget alert](https://firebase.google.com/docs/projects/billing/avoid-surprise-bills) when you
+switch. See [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
+The free tier has small daily limits for each model (at the time of writing, 20 requests a day
+for Gemini Flash; the app then moves on to Flash-Lite, which has its own allowance). They reset
+at midnight US Pacific time, and when they run out the app says when. For more, switch the
+project to Blaze; normal use then costs a few rupees a month.
 
 Anyone who has your app's Firebase settings could call AI Logic and use up your free quota. For a
 public release, turn on [App Check](https://firebase.google.com/docs/ai-logic/app-check) and set per-user
@@ -444,10 +513,14 @@ Native iOS builds haven't been tested yet. Reports and fixes are welcome.
 platewise/
 ├── src/
 │   ├── app/                 Screens. Expo Router: every file is a route.
-│   │   ├── (tabs)/          Home, Progress, Foods, Me
-│   │   ├── auth.tsx         Sign up / log in (phone-only, email, Google)
-│   │   ├── onboarding.tsx   7-step plan setup
-│   │   ├── snap.tsx         Photo logging
+│   │   ├── index.tsx        Splash screen, then Home or login
+│   │   ├── (tabs)/          Home, Progress, Categories, Profile (and the Scan button)
+│   │   ├── welcome.tsx      First screen for people who aren't logged in
+│   │   ├── auth.tsx         Sign up / log in (phone-only, email, Google), forgot password
+│   │   ├── onboarding.tsx   8-step plan setup (goal, name, body, activity, diet, meals)
+│   │   ├── snap.tsx         Scan food: photo, preview, recognition, nutrition result
+│   │   ├── log.tsx          Search and select food manually, find a brand's values online
+│   │   ├── custom-food.tsx  Your own food, typed in or read from a label photo
 │   │   ├── barcode.tsx      Barcode and QR scanner
 │   │   ├── food/[id].tsx    Food detail and portion picker
 │   │   ├── weight.tsx       Weight log
@@ -460,7 +533,8 @@ platewise/
 │       ├── nutrition.ts     Calorie maths, BMI, health score
 │       ├── barcode.ts       Open Food Facts lookup, QR product codes
 │       ├── reminders.ts     Local notifications
-│       ├── recognition.ts   Plug-in point for automatic food recognition
+│       ├── recognition.ts   Food recognition layer (Gemini, or tagging by hand)
+│       ├── ai.ts            Gemini through Firebase AI Logic: recognition, labels, search, estimates
 │       └── *.web.ts         Browser versions of phone-only features
 ├── assets/                  App icon and splash screen
 ├── docs/screenshots/        Images used in this README
@@ -491,11 +565,14 @@ platewise/
   each time up to an hour.
 - **Cloud accounts:** sign-in is handled by Firebase Authentication. Logs, goals and settings
   are stored in Firestore under your user ID, and the security rules stop anyone else reading them.
-  Deleting your account in **Me** deletes the cloud data too.
-- **Meal photos** stay on the phone that took them and are never uploaded.
+  Deleting your account in **Profile** deletes the cloud data too.
+- **Meal photos** are saved on the phone that took them. When you tap **Analyse food**, a smaller
+  copy is sent to Google Gemini through Firebase AI Logic to identify the food; it isn't stored
+  in your account or synced.
 - **Barcode lookups** send only the barcode number to Open Food Facts.
-- **AI helpers** (only when you tap them) send the label photo or the food name you typed to Google
-  Gemini through Firebase AI Logic. Nothing else from your logs is sent.
+- **AI helpers** (only when you tap them) send the photo or the food name you typed to Google
+  Gemini through Firebase AI Logic; **Find online** also has Gemini search Google for that name.
+  Nothing else from your logs is sent.
 - Android system backups are turned off, and there are no ads or analytics.
 
 ## Food data
@@ -533,12 +610,25 @@ It downloads the sources into `.food-cache/` and writes `src/data/foods-extra.js
 Platewise gives estimates, not medical advice. Talk to a doctor or dietitian before changing
 your diet, especially if you are under 18, pregnant or have a health condition.
 
-## Adding automatic food recognition
+## How food recognition works
 
-Photo logging currently works by tagging: after taking a photo, you tap the foods on the plate.
-Recognition is its own layer in [`src/lib/recognition.ts`](src/lib/recognition.ts). To add a model
-or an API later, implement the `Recognizer` interface (return detected food IDs and estimated
-grams, or `null` to fall back to tagging) and swap it in. The screens don't need to change.
+```
+photo → Gemini (food names + portion weights) → food database search → nutrition result
+```
+
+1. The photo is shrunk to about 1,000 pixels wide and sent to Gemini with a short list of the
+   app's everyday food names, so its answers match the database.
+2. Gemini returns each food it sees, an estimated weight in grams and how sure it is.
+3. Each name is looked up with the app's food search ([`src/lib/search.ts`](src/lib/search.ts)).
+   The nutrition always comes from the food database, not from the AI. Names with no match are
+   shown as "Nutrition information for … is currently unavailable".
+4. You check the result, change portions, remove or add foods, and log it.
+
+Recognition is its own layer in [`src/lib/recognition.ts`](src/lib/recognition.ts). To use a different
+model or API, implement the `Recognizer` interface (return the foods found, or `null` to let the
+user tag the photo) and return it from `recognizer()`. The screens don't need to change. Without
+Firebase, the manual recognizer is used: you tap the foods on the plate, helped by suggestions
+from what you usually eat at that meal.
 
 ## Troubleshooting
 
@@ -557,7 +647,10 @@ grams, or `null` to fall back to tagging) and swap it in. The screens don't need
 | `JAVA_HOME is set to an invalid directory` | Point `JAVA_HOME` to a JDK 17 folder (the one that contains `bin\java.exe`), or unset it and let the script find one. |
 | `SDK location not found` | Set `ANDROID_HOME` to your Android SDK folder, or create `android/local.properties` with `sdk.dir=/path/to/sdk`. |
 | Build says licences are not accepted | Run `sdkmanager --licenses` (see the one-time setup). |
-| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Me → Meals, budget and reminders**. Some phones also need battery optimisation turned off for the app. |
+| **Analyse food** says "AI isn't switched on for this app yet" | Turn on AI Logic in Firebase (step 7). No rebuild needed. |
+| "Today's free AI allowance is used up" | The free Gemini tier's daily limit was reached. Wait for the reset time shown, tag the foods yourself meanwhile, or switch the Firebase project to Blaze. |
+| Recognition names the wrong food | Tap **Scan again** with the food filling the photo in good light, or remove it and use **Select another food**. |
+| No reminder notifications | Allow notifications for the app in the phone's settings, then use **Send a test reminder** in **Profile → Meals, budget and reminders**. Some phones also need battery optimisation turned off for the app. |
 | Scanning a QR code says it has no product details | Many QR codes on packs only link to a website. Scan the barcode (the black bars) instead. |
 
 ## Contributing

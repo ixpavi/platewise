@@ -11,8 +11,8 @@ import { C, F, T } from '@/theme';
 const TAB_META: Record<string, { label: string; icon: string; iconOn: string }> = {
   index: { label: 'Home', icon: 'home-outline', iconOn: 'home' },
   insights: { label: 'Progress', icon: 'chart-box-outline', iconOn: 'chart-box' },
-  foods: { label: 'Foods', icon: 'food-apple-outline', iconOn: 'food-apple' },
-  profile: { label: 'Me', icon: 'account-circle-outline', iconOn: 'account-circle' },
+  foods: { label: 'Categories', icon: 'shape-outline', iconOn: 'shape' },
+  profile: { label: 'Profile', icon: 'account-circle-outline', iconOn: 'account-circle' },
 };
 
 export default function TabLayout() {
@@ -64,17 +64,24 @@ function TabBar({ state, navigation, insets }: BottomTabBarProps) {
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       {left.map(renderTab)}
       <View style={styles.tab}>
+        {/* Scan food: tap to scan; hold for the other ways to log. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Log something"
+          accessibilityLabel="Scan food"
+          accessibilityHint="Hold for more ways to log"
           onPress={() => {
+            tap();
+            router.push('/snap');
+          }}
+          onLongPress={() => {
             tap();
             setOpen(true);
           }}
           style={({ pressed }) => [styles.fab, pressed && { transform: [{ scale: 0.95 }] }]}
         >
-          <Icon name="plus" size={30} color="#fff" />
+          <Icon name="camera-iris" size={28} color="#fff" />
         </Pressable>
+        <Text style={[styles.tabText, { marginTop: 2 }]}>Scan</Text>
       </View>
       {right.map(renderTab)}
       <QuickAdd visible={open} onClose={() => setOpen(false)} />
@@ -89,13 +96,13 @@ function QuickAdd({ visible, onClose }: { visible: boolean; onClose: () => void 
     setTimeout(fn, 180);
   };
   const items: { icon: string; label: string; sub: string; color: string; bg: string; run: () => void }[] = [
-    { icon: 'camera-iris', label: 'Snap a meal', sub: 'Photo, then tap foods', color: C.citrusInk, bg: C.citrus, run: () => go(() => router.push('/snap')) },
+    { icon: 'camera-iris', label: 'Scan food', sub: 'Take or upload a photo', color: C.citrusInk, bg: C.citrus, run: () => go(() => router.push('/snap')) },
     { icon: 'magnify', label: 'Log food', sub: `Add to ${mealNow.toLowerCase()}`, color: C.brand, bg: C.brandSoft, run: () => go(() => router.push({ pathname: '/log', params: { meal: mealNow, day: dayKey() } })) },
     { icon: 'barcode-scan', label: 'Scan code', sub: 'Barcode or QR on a pack', color: C.coach, bg: C.coachSoft, run: () => go(() => router.push({ pathname: '/barcode', params: { meal: mealNow, day: dayKey() } })) },
     { icon: 'scale-bathroom', label: 'Weight', sub: 'Log today’s weight', color: C.weight, bg: C.weightSoft, run: () => go(() => router.push('/weight')) },
   ];
   return (
-    <Sheet visible={visible} onClose={onClose} title="Track">
+    <Sheet visible={visible} onClose={onClose} title="Log food">
       <View style={styles.grid}>
         {items.map((it) => (
           <Pressable key={it.label} onPress={it.run} style={({ pressed }) => [styles.qa, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityLabel={it.label}>

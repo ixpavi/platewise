@@ -1,17 +1,19 @@
 // Gemini through Firebase AI Logic. The app never holds a Gemini key: requests go through your
 // Firebase project, and the key stays on Google's servers (README, "AI features").
 // Used only for things the food database can't answer: reading a packet's nutrition label from a
-// photo, and estimating a dish that isn't in the database.
+// photo, finding the values a brand or restaurant publishes (with Google Search), and estimating a
+// dish that isn't in the database.
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
-import type { Schema as SchemaT, TypedSchema } from 'firebase/ai';
+import type { EnhancedGenerateContentResponse, ModelParams, Schema as SchemaT, TypedSchema } from 'firebase/ai';
 import type { Category, Diet, Food } from '@/data/foods';
 import { getCloud } from './firebase';
 
 // Google retires model versions (2.5 Flash is gone for new projects), so ask for the latest Flash
 // and fall back to a pinned one if the alias isn't available.
-const MODELS = ['gemini-flash-latest', 'gemini-3.8-flash'];
+// Flash-Lite is the last resort: it has more spare capacity when the others are overloaded.
+const MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest'];
 
 export class AiError extends Error {}
 
@@ -19,17 +21,81 @@ export class AiError extends Error {}
 export const aiAvailable = () => !!getCloud();
 
 export type Per100 = { kcal: number; carb: number; protein: number; fat: number; fibre: number; sugar: number };
-export type LabelRead = { name: string | null; isDrink: boolean; diet: Diet | null; per100: Per100; servingGrams: number | null; servingLabel: string | null };
+/**
+ * What a label, menu or screenshot says. per100 is missing when only per-serving values are given
+ * without a serving weight (common on menus and delivery apps).
+ */
+export type LabelRead = {
+  name: string | null;
+  isDrink: boolean;
+  diet: Diet | null;
+  per100: Per100 | null;
+  perServing: Per100 | null;
+  servingGrams: number | null;
+  servingLabel: string | null;
+};
 export type Estimate = { name: string; cat: Category; diet: Diet; base: 'g' | 'ml'; per100: Per100; portions: { label: string; grams: number }[] };
 
-function friendly(e: unknown): AiError {
+// The SDK reports every failed server response as "fetch-error", so look at the HTTP status too.
+const messageOf = (e: unknown) => String((e as Error)?.message ?? '');
+function statusOf(e: unknown): number {
+  const s = Number((e as { customErrorData?: { status?: number } })?.customErrorData?.status);
+  if (Number.isFinite(s) && s > 0) return s;
+  const m = messageOf(e).match(/\[(\d{3})\b/);
+  return m ? Number(m[1]) : 0;
+}
+/** Overloaded or rate limited: worth retrying or trying another model. */
+const isBusy = (e: unknown) => {
+  const s = statusOf(e);
+  return s === 429 || s >= 500 || /high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|try again later/i.test(messageOf(e));
+};
+const isMissingModel = (e: unknown) => statusOf(e) === 404 || /no longer available|NOT_FOUND/i.test(messageOf(e));
+/** Out of free allowance. Each model has its own, so another model may still answer, but retrying this one won't. */
+const isQuota = (e: unknown) => statusOf(e) === 429 && /quota/i.test(messageOf(e));
+const isDailyQuota = (e: unknown) => isQuota(e) && /PerDay/i.test(messageOf(e));
+/**
+ * Google Search isn't part of Gemini's free tier: a search request is refused as "quota exceeded"
+ * without saying which limit, unlike a real limit. The project needs the Blaze (pay-as-you-go) plan.
+ */
+const isSearchOff = (e: unknown) => isQuota(e) && !/QuotaFailure|RetryInfo|PerDay|PerMinute/i.test(messageOf(e));
+export class SearchOffError extends AiError {}
+let searchOff = false;
+/** Online search is offered until Google says this app's plan doesn't include it (checked again after a restart). */
+export const webSearchAvailable = () => aiAvailable() && !searchOff;
+
+/** The free Gemini allowance resets at midnight US Pacific time. Returns that moment in the phone's own time. */
+function quotaResetTime(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  // US daylight saving: second Sunday of March to first Sunday of November, 2 am local.
+  const sunday = (month: number, nth: number) => {
+    const first = new Date(Date.UTC(y, month, 1)).getUTCDay();
+    return 1 + ((7 - first) % 7) + (nth - 1) * 7;
+  };
+  const dstStart = Date.UTC(y, 2, sunday(2, 2), 10);
+  const dstEnd = Date.UTC(y, 10, sunday(10, 1), 9);
+  const offset = now.getTime() >= dstStart && now.getTime() < dstEnd ? 7 : 8;
+  const reset = new Date(now);
+  reset.setUTCHours(offset, 0, 0, 0);
+  if (reset.getTime() <= now.getTime()) reset.setUTCDate(reset.getUTCDate() + 1);
+  const h = reset.getHours();
+  const m = reset.getMinutes();
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'am' : 'pm'}`;
+}
+
+function friendly(e: unknown, search = false): AiError {
   if (e instanceof AiError) return e;
   const code = String((e as { code?: string })?.code ?? '');
-  const msg = String((e as Error)?.message ?? '');
+  const msg = messageOf(e);
+  const status = statusOf(e);
+  if (search && isSearchOff(e)) return new SearchOffError('Searching Google needs Google’s paid AI plan, which isn’t turned on for this app yet. Photograph the values (box, menu or a screenshot of the brand’s site) or type them in.');
   if (code === 'api-not-enabled' || /AI Logic API|has not been used|is disabled/i.test(msg)) return new AiError('AI isn’t switched on for this app yet. The app’s owner can turn it on in Firebase (AI Logic).');
-  if (/429|503|RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded|quota|rate limit/i.test(msg)) return new AiError('The AI is busy right now. Try again in a minute.');
-  if (code === 'fetch-error' || /network request failed|failed to fetch|network/i.test(msg)) return new AiError('No internet connection. Check it and try again.');
+  if (/App Check/i.test(msg) || status === 401 || status === 403) return new AiError('AI requests are being refused by the app’s Firebase security settings (App Check). The app’s owner can fix this in Firebase.');
+  if (isDailyQuota(e)) return new AiError(`Today’s free AI allowance is used up. It resets at ${quotaResetTime()} your time. You can still enter the values yourself.`);
+  if (isQuota(e)) return new AiError('Too many AI requests in a short time. Wait a minute and try again.');
+  if (isBusy(e)) return new AiError('The AI is busy right now. Try again in a minute.');
   if (/SAFETY|blocked|RECITATION/i.test(msg)) return new AiError('The AI couldn’t read that. Try a clearer photo.');
+  if (!status && /network request failed|failed to fetch|network error|internet/i.test(msg)) return new AiError('Please check your internet connection and try again.');
   return new AiError('The AI couldn’t answer right now. Try again.');
 }
 
@@ -75,36 +141,48 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function ask<T>(parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[], schema: (s: typeof SchemaT) => TypedSchema): Promise<T> {
+type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
+type AiSdk = typeof import('firebase/ai');
+type ModelSettings = Omit<ModelParams, 'model'>;
+
+/** Sends one request, moving on to the next model when one is overloaded, retired or out of allowance. */
+async function generate(parts: Part[], settings: (sdk: AiSdk) => ModelSettings, search = false): Promise<EnhancedGenerateContentResponse> {
   const cloud = getCloud();
   if (!cloud) throw new AiError('AI needs the app’s Firebase settings.');
   polyfillForAi();
   // Loaded on first use so the AI SDK never affects app start-up.
-  const { getAI, getGenerativeModel, GoogleAIBackend, Schema } = await withTimeout(import('firebase/ai'), 15_000).catch((e: unknown) => {
+  const sdk = await withTimeout(import('firebase/ai'), 15_000).catch((e: unknown) => {
     throw friendly(e);
   });
-  const ai = getAI(cloud.app, { backend: new GoogleAIBackend() });
+  const ai = sdk.getAI(cloud.app, { backend: new sdk.GoogleAIBackend() });
   let last: unknown;
   for (const name of MODELS) {
-    const model = getGenerativeModel(ai, { model: name, generationConfig: { responseMimeType: 'application/json', responseSchema: schema(Schema), temperature: 0.1 } }, { timeout: 45_000 });
-    // Gemini is sometimes overloaded (503) at busy times: retry twice, waiting a little longer each time.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const model = sdk.getGenerativeModel(ai, { model: name, ...settings(sdk) }, { timeout: 45_000 });
+    // Gemini is often overloaded at busy times (500 "high demand", 503): retry once, then move on
+    // to the next model. A retired model (404) or a used-up allowance (429 quota) moves on at once.
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await withTimeout(model.generateContent(parts), 50_000);
-        return JSON.parse(res.response.text()) as T;
+        return (await withTimeout(model.generateContent(parts), 50_000)).response;
       } catch (e) {
         last = e;
-        const msg = String((e as Error)?.message ?? '');
-        if (/503|UNAVAILABLE|overloaded/i.test(msg) && attempt < 2) {
-          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        // Search not on the free tier: the same for every model, so don't try the others.
+        if (search && isSearchOff(e)) throw friendly(e, true);
+        if (isBusy(e) && !isQuota(e) && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1500));
           continue;
         }
-        if (/404|NOT_FOUND|not found|no longer available/i.test(msg)) break; // try the next model
-        throw friendly(e);
+        if (isBusy(e) || isMissingModel(e)) break;
+        throw friendly(e, search);
       }
     }
   }
-  throw friendly(last);
+  throw friendly(last, search);
+}
+
+/** Asks for an answer in a fixed JSON shape. */
+async function ask<T>(parts: Part[], schema: (s: typeof SchemaT) => TypedSchema): Promise<T> {
+  const res = await generate(parts, (sdk) => ({ generationConfig: { responseMimeType: 'application/json', responseSchema: schema(sdk.Schema), temperature: 0.1 } }));
+  return JSON.parse(res.text()) as T;
 }
 
 const num = (v: unknown, max: number) => {
@@ -120,6 +198,14 @@ function per100Of(raw: Partial<Record<keyof Per100, unknown>> | undefined): Per1
   return p;
 }
 
+/** Values for one serving: no per-100 g sanity check is possible, so only keep them in range. */
+function servingOf(raw: Partial<Record<keyof Per100, unknown>> | undefined): Per100 {
+  const carb = num(raw?.carb, 1000);
+  const p: Per100 = { kcal: Math.round(num(raw?.kcal, 5000)), carb, protein: num(raw?.protein, 1000), fat: num(raw?.fat, 1000), fibre: num(raw?.fibre, 1000), sugar: Math.min(num(raw?.sugar, 1000), carb) };
+  if (!p.kcal) p.kcal = Math.round(p.carb * 4 + p.protein * 4 + p.fat * 9);
+  return p;
+}
+
 // ---------------------------------------------------------------- label photos
 
 /** Takes or picks a photo and returns it small enough to send quickly (about 200 KB). */
@@ -132,30 +218,81 @@ export async function labelPhoto(source: 'camera' | 'gallery'): Promise<string |
   const res = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
   const asset = res.canceled ? null : res.assets?.[0];
   if (!asset) return null;
-  const width = asset.width && asset.width > 0 ? Math.min(asset.width, 1400) : 1400;
-  const ref = await ImageManipulator.manipulate(asset.uri).resize({ width }).renderAsync();
+  return photoForAi(asset.uri, asset.width);
+}
+
+/** Shrinks a photo to send quickly (about 200 KB) and returns it as base64 JPEG. */
+export async function photoForAi(uri: string, width?: number, maxWidth = 1400): Promise<string> {
+  const w = width && width > 0 ? Math.min(width, maxWidth) : maxWidth;
+  const ref = await ImageManipulator.manipulate(uri).resize({ width: w }).renderAsync();
   const out = await ref.saveAsync({ compress: 0.7, format: SaveFormat.JPEG, base64: true });
   if (!out.base64) throw new AiError('Couldn’t prepare that photo. Try another one.');
   return out.base64;
 }
 
-type LabelRaw = { readable: boolean; name?: string | null; isDrink?: boolean; vegMark?: string; per100?: Record<string, unknown>; servingGrams?: number | null; servingLabel?: string | null };
+// ---------------------------------------------------------------- food recognition from a meal photo
 
-/** Reads the nutrition table on a packet from a photo. */
+export type SeenFood = { name: string; grams: number; confidence: number };
+
+/**
+ * Identifies the foods on a plate and estimates each portion. `known` is a list of food names in
+ * the app's database; the AI uses them when one fits, so the names match on search.
+ */
+export async function identifyFoods(jpegBase64: string, known: string[]): Promise<SeenFood[]> {
+  const raw = await ask<{ isFood: boolean; items?: { name?: string; grams?: number; confidence?: number }[] }>(
+    [
+      {
+        text:
+          'This is a photo of a meal, snack or drink. Identify each separate food and drink in it. Indian home food is common.\n' +
+          '- name: a short common name for the dish, such as "dal tadka", "jeera rice", "chapati", "aloo gobi", "chicken curry", "curd". When one of the names in the list below fits, use it exactly.\n' +
+          '- grams: your estimate of the weight of that portion as served in the photo (ml for drinks). Judge the size from the plate, bowl, glass or hand.\n' +
+          '- confidence: from 0 to 1, how sure you are of what the food is.\n' +
+          '- Leave out garnish, cutlery, plates and packaging. If the photo shows no food or drink, set isFood to false.\n' +
+          `Names in the app's food list (separated by semicolons): ${known.join('; ')}`,
+      },
+      { inlineData: { mimeType: 'image/jpeg', data: jpegBase64 } },
+    ],
+    (S) =>
+      S.object({
+        properties: {
+          isFood: S.boolean(),
+          items: S.array({ items: S.object({ properties: { name: S.string(), grams: S.number(), confidence: S.number() } }) }),
+        },
+      }),
+  );
+  if (!raw?.isFood) return [];
+  return (raw.items ?? [])
+    .map((i) => ({ name: String(i.name ?? '').trim().slice(0, 50), grams: Math.round(Number(i.grams)), confidence: Math.min(1, Math.max(0, Number(i.confidence) || 0)) }))
+    .filter((i) => i.name && i.grams >= 1 && i.grams <= 2000)
+    .slice(0, 8);
+}
+
+type LabelRaw = {
+  readable: boolean;
+  name?: string | null;
+  isDrink?: boolean;
+  vegMark?: string;
+  basis?: string;
+  values?: Record<string, unknown>;
+  servingGrams?: number | null;
+  servingLabel?: string | null;
+};
+
+/** Reads nutrition values from a photo: a packet's label, a menu, or a screenshot of a brand's site or a delivery app. */
 export async function readLabel(jpegBase64: string): Promise<LabelRead> {
   const raw = await ask<LabelRaw>(
     [
       {
         text:
-          'This is a photo of a packaged food or drink. Read its nutrition information table.\n' +
-          '- Give values per 100 g, or per 100 ml for drinks. If the table only lists values per serving, convert them using the serving size.\n' +
+          'This photo shows nutrition information: a packet’s nutrition table, a restaurant menu or box, or a screenshot of a brand’s website or a delivery app. Read the nutrition values.\n' +
+          '- Copy the values as printed. basis: "per100" if they are per 100 g or 100 ml, "serving" if they are per serving, portion, box or item. If both are printed, use the per 100 g values.\n' +
           '- Energy in kcal; if only kJ is printed, divide by 4.184.\n' +
           '- carb = total carbohydrate, fat = total fat, fibre = dietary fibre, sugar = total sugars (use added sugars only if total is not printed).\n' +
-          '- Use null for fibre or sugar when they are not printed. Never invent numbers that are not on the label.\n' +
-          '- If there is no readable nutrition table, set readable to false.\n' +
-          '- name: the product name with its brand, if visible.\n' +
+          '- Use null for fibre or sugar when they are not printed. Never invent numbers that are not in the photo.\n' +
+          '- If there are no readable nutrition values, set readable to false.\n' +
+          '- name: the product or dish name with its brand, if visible.\n' +
           '- vegMark: "veg" for the Indian green dot-in-square symbol, "nonveg" for the brown or red one, otherwise "none".\n' +
-          '- servingGrams and servingLabel: the serving size printed on the label (for example 30 and "1 bar"), or null.',
+          '- servingGrams and servingLabel: the serving size printed (for example 30 and "1 bar", or 450 and "1 box"), or null if no weight is printed.',
       },
       { inlineData: { mimeType: 'image/jpeg', data: jpegBase64 } },
     ],
@@ -166,7 +303,8 @@ export async function readLabel(jpegBase64: string): Promise<LabelRead> {
           name: S.string({ nullable: true }),
           isDrink: S.boolean(),
           vegMark: S.enumString({ enum: ['veg', 'nonveg', 'none'] }),
-          per100: S.object({
+          basis: S.enumString({ enum: ['per100', 'serving'] }),
+          values: S.object({
             properties: { kcal: S.number(), carb: S.number(), protein: S.number(), fat: S.number(), fibre: S.number({ nullable: true }), sugar: S.number({ nullable: true }) },
           }),
           servingGrams: S.number({ nullable: true }),
@@ -174,14 +312,26 @@ export async function readLabel(jpegBase64: string): Promise<LabelRead> {
         },
       }),
   );
-  if (!raw?.readable || !raw.per100) throw new AiError('Couldn’t find a nutrition table in that photo. Take a closer, sharper photo of the label.');
-  const serving = Number(raw.servingGrams);
+  if (!raw?.readable || !raw.values) throw new AiError('Couldn’t find nutrition values in that photo. Take a closer, sharper photo of the table.');
+  const sg = Number(raw.servingGrams);
+  const servingGrams = Number.isFinite(sg) && sg >= 1 && sg <= 3000 ? Math.round(sg * 10) / 10 : null;
+  const scaled = (v: Record<string, unknown>, by: number) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x == null ? x : Number(x) * by]));
+  let per100: Per100 | null;
+  let perServing: Per100 | null;
+  if (raw.basis === 'serving') {
+    perServing = servingOf(raw.values);
+    per100 = servingGrams ? per100Of(scaled(raw.values, 100 / servingGrams)) : null;
+  } else {
+    per100 = per100Of(raw.values);
+    perServing = servingGrams ? servingOf(scaled(raw.values, servingGrams / 100)) : null;
+  }
   return {
     name: raw.name?.trim().slice(0, 60) || null,
     isDrink: !!raw.isDrink,
     diet: raw.vegMark === 'veg' ? 'veg' : raw.vegMark === 'nonveg' ? 'nonveg' : null,
-    per100: per100Of(raw.per100),
-    servingGrams: Number.isFinite(serving) && serving >= 1 && serving <= 2000 ? Math.round(serving * 10) / 10 : null,
+    per100,
+    perServing,
+    servingGrams,
     servingLabel: raw.servingLabel?.trim().slice(0, 24) || null,
   };
 }
@@ -255,5 +405,148 @@ export function estimateToFood(id: string, query: string, e: Estimate): Food {
     units: [...units, { id: e.base, label: e.base === 'ml' ? 'ml' : 'gram', grams: 1 }],
     custom: true,
     src: 'ai',
+  };
+}
+
+// ---------------------------------------------------------------- published values for brands and restaurants
+
+export type WebFind = {
+  found: boolean;
+  name: string;
+  /** What one serving is, as published: "1 box", "Regular", "100 g". */
+  servingLabel: string;
+  /** Published weight of that serving, or null when the brand doesn't give one. */
+  servingGrams: number | null;
+  isDrink: boolean;
+  diet: Diet | null;
+  perServing: Per100;
+  /** Calories weren't published, so they're worked out from carbs, protein and fat. */
+  kcalFromMacros: boolean;
+  /** Where the numbers come from, in the AI's words ("Swiggy menu", "brand website"). */
+  from: string | null;
+  /** Web pages Google Search used for the answer. */
+  sources: { title: string; uri: string }[];
+  /** Google Search suggestions (HTML). Google requires showing these with the answer. */
+  searchHtml: string | null;
+};
+
+type WebRaw = {
+  found?: boolean;
+  name?: string;
+  servingLabel?: string | null;
+  servingGrams?: number | null;
+  kcal?: number | null;
+  carb?: number | null;
+  protein?: number | null;
+  fat?: number | null;
+  fibre?: number | null;
+  sugar?: number | null;
+  diet?: string | null;
+  isDrink?: boolean;
+  source?: string | null;
+};
+
+/** Pulls the JSON object out of a text answer (it may come wrapped in a code block). */
+function jsonIn(text: string): WebRaw | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[0]) as WebRaw;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Searches the web (Google Search, through Gemini) for the nutrition values a brand or restaurant
+ * publishes for a dish, e.g. a delivery biryani, which can be far from a home-style recipe.
+ */
+export async function findOnline(query: string): Promise<WebFind> {
+  const dish = query.replace(/["\n\r]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const res = await generate(
+    [
+      {
+        text:
+          `Search the web for the nutrition values published for this food: "${dish}".\n` +
+          'It is most likely a branded, restaurant or packaged food sold in India, so look at the brand’s own website or menu, its packaging, and its listing on delivery apps such as Swiggy, Zomato or EatSure.\n' +
+          'Rules:\n' +
+          '- Use only numbers that are actually published for this product, or for the closest named item from the same brand. Never estimate a number yourself; use null for anything not published.\n' +
+          '- Give the values for one serving exactly as published, and say what the serving is (for example "1 box", "Regular", "1 portion"). If only values per 100 g are published, give those, with servingLabel "100 g" and servingGrams 100.\n' +
+          '- servingGrams: the published weight of that serving in grams, or null if no weight is published.\n' +
+          '- name: the item as the brand names it, with the brand, for example "Behrouz Lazeez Bhuna Murgh Biryani".\n' +
+          '- diet: "veg", "egg" or "nonveg", judged from the item.\n' +
+          '- source: the website the numbers come from.\n' +
+          '- If you found no published nutrition values, set found to false.\n' +
+          'Reply with only this JSON object and no other text:\n' +
+          '{"found": true, "name": "", "servingLabel": "", "servingGrams": null, "kcal": null, "carb": null, "protein": null, "fat": null, "fibre": null, "sugar": null, "diet": null, "isDrink": false, "source": ""}',
+      },
+    ],
+    () => ({ tools: [{ googleSearch: {} }], generationConfig: { temperature: 0.1 } }),
+    true,
+  ).catch((e: unknown) => {
+    if (e instanceof SearchOffError) searchOff = true;
+    throw e;
+  });
+  const g = res.candidates?.[0]?.groundingMetadata;
+  const sources: WebFind['sources'] = [];
+  for (const c of g?.groundingChunks ?? []) {
+    const uri = c.web?.uri;
+    if (uri && /^https:\/\//.test(uri) && !sources.some((s) => s.uri === uri)) sources.push({ uri, title: (c.web?.title || c.web?.domain || 'Source').slice(0, 60) });
+  }
+  const searchHtml = g?.searchEntryPoint?.renderedContent || null;
+  const raw = jsonIn(res.text());
+
+  const kcalRaw = raw?.kcal == null ? NaN : Number(raw.kcal);
+  const has = (v: unknown) => v != null && Number.isFinite(Number(v));
+  const macros = has(raw?.carb) && has(raw?.protein) && has(raw?.fat);
+  const perServing: Per100 = { kcal: 0, carb: num(raw?.carb, 1000), protein: num(raw?.protein, 1000), fat: num(raw?.fat, 1000), fibre: num(raw?.fibre, 1000), sugar: 0 };
+  perServing.sugar = Math.min(num(raw?.sugar, 1000), perServing.carb || 1000);
+  const kcalFromMacros = !(kcalRaw > 0) && macros;
+  perServing.kcal = kcalRaw > 0 ? Math.round(Math.min(kcalRaw, 5000)) : Math.round(perServing.carb * 4 + perServing.protein * 4 + perServing.fat * 9);
+
+  const grams = Number(raw?.servingGrams);
+  const servingLabel = String(raw?.servingLabel ?? '').replace(/\(.*?\)/g, '').replace(/\s+/g, ' ').trim().slice(0, 24) || 'serving';
+  return {
+    found: !!raw?.found && perServing.kcal > 0 && (kcalRaw > 0 || macros),
+    name: (raw?.name || dish).trim().slice(0, 60),
+    servingLabel,
+    servingGrams: Number.isFinite(grams) && grams >= 5 && grams <= 3000 ? Math.round(grams) : null,
+    isDrink: !!raw?.isDrink,
+    diet: raw?.diet === 'veg' || raw?.diet === 'egg' || raw?.diet === 'nonveg' ? raw.diet : null,
+    perServing,
+    kcalFromMacros,
+    from: raw?.source?.trim().slice(0, 60) || null,
+    sources: sources.slice(0, 4),
+    searchHtml,
+  };
+}
+
+/** Turns values found online into a food the user can log (saved like a custom food, marked as from the web). */
+export function webToFood(id: string, query: string, w: WebFind, fallbackDiet: Diet): Food {
+  const base = w.isDrink ? 'ml' : 'g';
+  const cat: Category = w.isDrink ? 'Drink' : 'Food';
+  // Without a published weight, a serving stands in as 100 g, so values per 100 g are values per serving.
+  const g = w.servingGrams ?? 100;
+  const per = (v: number) => Math.round((v / g) * 1000) / 10;
+  const p = w.perServing;
+  const label = w.servingLabel.replace(/^1\s+(?=\D)/, '') || 'serving';
+  const gramUnit = { id: base, label: base === 'ml' ? 'ml' : 'gram', grams: 1 };
+  // Values published per 100 g: log by weight.
+  const per100Only = w.servingGrams === 100 && /^100\s*(g|gm|grams?|ml)$/i.test(label);
+  return {
+    id,
+    name: w.name,
+    aliases: `${query.toLowerCase()} ${w.name.toLowerCase()}`,
+    cat,
+    icon: CAT_ICON[cat],
+    diet: w.diet ?? fallbackDiet,
+    base,
+    gi: null,
+    n: { kcal: Math.round((p.kcal / g) * 100), carb: per(p.carb), protein: per(p.protein), fat: per(p.fat), fibre: per(p.fibre), sugar: per(p.sugar) },
+    units: per100Only ? [gramUnit] : w.servingGrams ? [{ id: 'serving', label, grams: g }, gramUnit] : [{ id: 'serving', label, grams: g }],
+    custom: true,
+    src: 'web',
+    ...(w.from || w.sources[0] ? { from: (w.from || w.sources[0].title).slice(0, 60) } : {}),
+    ...(w.servingGrams ? {} : { noWeight: true }),
   };
 }
