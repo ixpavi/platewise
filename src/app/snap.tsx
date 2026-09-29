@@ -19,7 +19,7 @@ import { useMeals } from '@/lib/summary';
 import { C, F, R, T } from '@/theme';
 import { goBack } from '@/lib/nav';
 
-type Item = { key: string; foodId: string; unitId: string; qty: number; confidence?: number };
+type Item = { key: string; foodId: string; unitId: string; qty: number; confidence?: number; seenAs?: string };
 type Photo = { uri: string; width?: number };
 /** How the result came about: foods identified, nothing identified, the AI failed, or tagged by hand. */
 type Outcome = { k: 'found'; n: number } | { k: 'none' } | { k: 'failed'; msg: string } | { k: 'manual' };
@@ -31,6 +31,12 @@ type Phase =
   | { k: 'error'; icon: string; title: string; body: string; settings?: boolean };
 
 const newKey = () => Math.random().toString(36).slice(2);
+/** True when every word the AI used appears in the food's name (so it isn't a loose match). */
+const sameName = (seen: string, name: string) => {
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(' ').filter((w) => w.length > 2);
+  const inName = new Set(words(name));
+  return words(seen).every((w) => inName.has(w));
+};
 
 export default function Snap() {
   const { food, addEntries, removeEntry, state } = useStore();
@@ -90,7 +96,7 @@ export default function Snap() {
       const f = food(d.foodId);
       const u = f?.units[0];
       const byUnit = u && u.grams > 1 && !f?.noWeight;
-      return { key: newKey(), foodId: d.foodId, unitId: u?.id ?? 'g', qty: byUnit ? Math.max(0.5, Math.round((d.grams / u.grams) * 2) / 2) : u?.grams === 1 ? d.grams : 1, confidence: d.confidence };
+      return { key: newKey(), foodId: d.foodId, unitId: u?.id ?? 'g', qty: byUnit ? Math.max(0.5, Math.round((d.grams / u.grams) * 2) / 2) : u?.grams === 1 ? d.grams : 1, confidence: d.confidence, seenAs: d.seenAs };
     });
 
   const analyse = async ({ uri, width }: Photo) => {
@@ -346,6 +352,8 @@ export default function Snap() {
                             {f.gi != null ? ` · GI ${giBand(f.gi)}` : ''}
                             {it.confidence != null ? ` · ${Math.round(it.confidence * 100)}% sure` : ''}
                           </Text>
+                          {/* The closest match in the database: say what the photo showed, so a loose match is easy to spot. */}
+                          {it.seenAs && !sameName(it.seenAs, f.name) ? <Text style={[T.tiny, { color: C.coach }]}>{`Seen as “${it.seenAs}”, closest match`}</Text> : null}
                           <Text style={T.tiny}>
                             {f.noWeight ? '' : `${fmt(grams)} ${f.base} · `}C {fmt(nut.carb)} · P {fmt(nut.protein)} · F {fmt(nut.fat)} g
                           </Text>

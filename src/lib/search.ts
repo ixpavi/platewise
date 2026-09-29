@@ -21,7 +21,7 @@ export function normalise(q: string) {
 
 // With thousands of foods, work per keystroke has to stay small: each list gets a word index once
 // (every distinct word -> the foods containing it), and typo matching runs over distinct words only.
-type Norm = { name: string; hay: string };
+type Norm = { name: string; hay: string; nameWords: string[] };
 type Index = { norms: Norm[]; vocab: Map<string, number[]> };
 const indexes = new WeakMap<Food[], Index>();
 
@@ -36,7 +36,8 @@ function indexFor(foods: Food[]): Index {
         if (list) list.push(i);
         else vocab.set(t, [i]);
       }
-      return { name: normalise(f.name), hay };
+      const name = normalise(f.name);
+      return { name, hay, nameWords: name.split(' ') };
     });
     ix = { norms, vocab };
     indexes.set(foods, ix);
@@ -45,6 +46,9 @@ function indexFor(foods: Food[]): Index {
 }
 
 const MISSING_WORD = 20;
+// A word found in the food's name counts for more than one found only in its aliases
+// ("zafrani rice" should find rice dishes before poha, whose aliases say "flattened rice").
+const NAME_WORD = 15;
 
 /**
  * Ranks foods by prefix, substring and small-typo matches on name and aliases (incl. Hindi names).
@@ -77,8 +81,9 @@ export function searchFoods(query: string, foods: Food[]): Food[] {
 
   const out: { f: Food; score: number }[] = [];
   for (const [i, s] of sum) {
-    const { name, hay } = norms[i];
+    const { name, hay, nameWords } = norms[i];
     let score = s - MISSING_WORD * (words.length - (matched.get(i) ?? 0));
+    for (const w of words) if (nameWords.some((t) => t.startsWith(w))) score += NAME_WORD;
     if (name.startsWith(q)) score += 120;
     else if (hay.includes(q)) score += 70;
     if (score <= 0) continue;
