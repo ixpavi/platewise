@@ -94,8 +94,10 @@ function friendly(e: unknown, search = false): AiError {
   if (isDailyQuota(e)) return new AiError(`Today’s free AI allowance is used up. It resets at ${quotaResetTime()} your time. You can still enter the values yourself.`);
   if (isQuota(e)) return new AiError('Too many AI requests in a short time. Wait a minute and try again.');
   if (isBusy(e)) return new AiError('The AI is busy right now. Try again in a minute.');
+  // No HTTP response at all means the request never reached the server. The SDK reports that as a
+  // generic "error", and the wording of the underlying message differs between Android versions.
+  if (!status && (code === 'error' || /network|failed to fetch|internet|resolve host|unreachable|timed? ?out/i.test(msg))) return new AiError('Please check your internet connection and try again.');
   if (/SAFETY|blocked|RECITATION/i.test(msg)) return new AiError('The AI couldn’t read that. Try a clearer photo.');
-  if (!status && /network request failed|failed to fetch|network error|internet/i.test(msg)) return new AiError('Please check your internet connection and try again.');
   return new AiError('The AI couldn’t answer right now. Try again.');
 }
 

@@ -43,6 +43,7 @@ describe('portions', () => {
   });
   test('unit labels read naturally', () => {
     expect(unitLabel('katori', 2)).toBe('katoris');
+    expect(unitLabel('katori', 0.5)).toBe('katori');
     expect(unitLabel('1 bowl', 1)).toBe('bowl');
     expect(unitLabel('gram', 150)).toBe('g');
   });

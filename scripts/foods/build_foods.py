@@ -54,6 +54,7 @@ NONVEG = re.compile(
     r"gizzards?|tripe|fish|tuna|salmon|cod|tilapia|catfish|trout|mackerel|sardines?|anchov(y|ies)|herring|pollock|"
     r"haddock|halibut|swordfish|shrimps?|prawns?|crabs?|lobsters?|clams?|oysters?|mussels?|scallops?|squid|calamari|"
     r"octopus|crayfish|roe|caviar|keema|kheema|kheema|gelatin|lard|suet|seafood|poultry|surimi|fish sauce|oyster sauce|"
+    r"abalone|conch|whelks?|escargots?|snails?|frogs?|(?<!black )turtles?(?!,?\s*beans?)|alligator|eels?|quail|pheasant|squab|"
     r"murg|murgh|gosht|machli|macchi|jhinga)\b",
     re.I,
 )
@@ -67,8 +68,9 @@ EGG_NAMES = re.compile(r"\b(eggs?,?\s*(poultry|hen|duck|quail)|(poultry|hen|duck
 BUNS = re.compile(r"((rolls?|buns?),?\s*(hamburger|hot ?dog|frankfurter)(\s*or\s*(hamburger|hot ?dog|frankfurter))?|(hamburger|hot ?dog|frankfurter)(\s*or\s*(hamburger|hot ?dog|frankfurter))?\s*(rolls?|buns?))", re.I)
 BURGER = re.compile(r"\b(hamburgers?|cheeseburgers?|burgers?)\b", re.I)
 # Plant-based versions of meat dishes ("Veggie burger", "Bacon strip, meatless", "Paneer seekh kebab").
+# "Imitation crab" is surimi, which is made from fish, so it doesn't count as plant-based.
 VEG_VERSION = re.compile(
-    r"meatless|meat substitute|meat alternative|meat-alternative|meat extender|meat analog|imitation|vegetarian|vegan|veggie|plant-based|"
+    r"meatless|meat substitute|meat alternative|meat-alternative|meat extender|meat analog|imitation(?! crab)|vegetarian|vegan|veggie|plant-based|"
     r"textured vegetable protein|\b(veg|vegetable|aloo|potato|paneer|mushroom|bean|black bean|soy|soya|tofu|quinoa|chickpea|falafel|lentil|dal)\s+"
     r"(burgers?|patty|patties|cutlets?|kebabs?|kababs?|seekh|sausages?|nuggets?|bacon|hot ?dogs?|meatballs?|mince|keema)",
     re.I,

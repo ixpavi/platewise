@@ -6,7 +6,8 @@ export const unitLabel = (raw: string, qty: number) => {
   const label = raw.replace(/^1\s+(?=\D)/, '');
   if (label === 'gram') return 'g';
   if (label === 'ml') return 'ml';
-  if (qty === 1 || label.includes(' ') || label.endsWith('s')) return label;
+  // Half a katori or one roti: singular. Only more than one takes a plural.
+  if (qty <= 1 || label.includes(' ') || label.endsWith('s')) return label;
   if (label.endsWith('y') && !/[aeiou]y$/.test(label)) return label.slice(0, -1) + 'ies';
   if (/(ch|sh|x)$/.test(label)) return label + 'es';
   return label + 's';
