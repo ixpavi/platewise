@@ -31,7 +31,7 @@ offline with no account, and can optionally sync to your own free Firebase proje
 7. [Run on an Android emulator](#run-on-an-android-emulator)
 8. [iPhone and iOS](#iphone-and-ios)
 9. [Project structure](#project-structure)
-10. [Commands](#commands)
+10. [Commands](#commands) and [Testing](#testing)
 11. [Where your data goes](#where-your-data-goes)
 12. [Food data](#food-data)
 13. [How food recognition works](#how-food-recognition-works)
@@ -536,9 +536,11 @@ platewise/
 │       ├── recognition.ts   Food recognition layer (Gemini, or tagging by hand)
 │       ├── ai.ts            Gemini through Firebase AI Logic: recognition, labels, search, estimates
 │       └── *.web.ts         Browser versions of phone-only features
-├── assets/                  App icon and splash screen
+├── __tests__/               Automated tests (Jest): calorie maths, search, barcodes, recognition
+├── assets/                  App icon and splash screen (scripts/make_icons.py draws them)
 ├── docs/screenshots/        Images used in this README
-├── scripts/                 Windows APK build script, foods/build_foods.py (food dataset builder)
+├── scripts/                 Windows APK build script, food dataset builder (foods/build_foods.py),
+│                            recognition evaluation (evaluate-recognition.mjs)
 ├── app.json, app.config.ts  App name, package name, permissions, plugins
 ├── firestore.rules          Database security rules
 └── .env.example             Template for your Firebase settings
@@ -556,7 +558,22 @@ platewise/
 | `npm run android` | Build and run a development build on a connected phone or emulator |
 | `npm run typecheck` | Check TypeScript types |
 | `npm run lint` | Check code style |
+| `npm test` | Run the automated tests |
+| `node scripts/evaluate-recognition.mjs` | Measure photo recognition on openly licensed food photos (needs Firebase and AI Logic) |
 | `scripts\build-android.cmd` | Build a release APK on Windows |
+
+## Testing
+
+- **Automated tests:** `npm test` runs 36 Jest tests covering the calorie equations and safety floors,
+  BMI, portions, glycemic index bands, food search (including typos and Hindi names), barcode and
+  QR parsing, the Open Food Facts lookup, and how recognised names are matched to foods. The AI and
+  the network are replaced by fakes, so the tests need no internet or AI allowance.
+- **Recognition evaluation:** `node scripts/evaluate-recognition.mjs` downloads 15 openly licensed
+  photos of Indian dishes from Wikimedia Commons, sends each through the app's own prompt and model
+  order, and reports how many dishes were named correctly, how many names matched the food database
+  and how long each took. The last run named the dish in 15 of 15 photos, every returned name matched
+  a database food, and the median time was about 10 seconds on the free tier. It uses one AI request
+  per photo and writes the results to `.food-cache/recognition-eval/`.
 
 ## Where your data goes
 
@@ -663,6 +680,7 @@ Issues and pull requests are welcome.
    ```bash
    npm run typecheck
    npm run lint
+   npm test
    ```
 
 3. Test on at least one platform (phone, emulator or browser).
